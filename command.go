@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // RunCommandCh runs an arbitrary command and streams output to a channnel.
@@ -22,6 +24,17 @@ func RunCommandCh(stdoutCh chan<- string, cutset string, command string, flags .
 		return fmt.Errorf("RunCommand: cmd.Start(): %v", err)
 	}
 
+	// Create a timer that will kill the process
+	timer := time.NewTimer(time.Second * 300)
+	go func(timer *time.Timer, cmd *exec.Cmd) {
+		for _ = range timer.C {
+			err := cmd.Process.Signal(os.Kill)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+	}(timer, cmd)
+
 	go func() {
 		defer close(stdoutCh)
 		for {
@@ -35,7 +48,7 @@ func RunCommandCh(stdoutCh chan<- string, cutset string, command string, flags .
 					break
 				}
 			}
-			text := strings.TrimSpace(string(buf[:n]))
+			text := strings.Trim(string(buf[:n]), " ")
 			for {
 				// Take the index of any of the given cutset
 				n := strings.IndexAny(text, cutset)
