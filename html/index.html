@@ -1,6 +1,9 @@
 <!DOCTYPE HTML>
 <html>
 	<head>
+
+		<link href="app.css" rel="stylesheet">
+
 		<script src="https://code.jquery.com/jquery-3.2.1.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4=" crossorigin="anonymous"></script>
 		<script src="app.js"></script>
 
@@ -12,6 +15,11 @@
 		<div>
 			<input type='text' size=50 id='url'>
 			<button id='go-button'>Get Video</button>
+		</div>
+		<div id='details'>
+			<span id='title'></span>
+			<div id='progress-bar'><span></span></div>
+			<span id='eta'></span>
 		</div>
 	</body>
 </html>

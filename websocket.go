@@ -4,77 +4,132 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"time"
+
+	"github.com/gorilla/websocket"
+	"golang.org/x/net/context"
 )
+
+const processTimeout = 30 //seconds
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 }
 
+// capture progress output e.g '73.2% of 6.25MiB ETA 00:01'
+var progressRe = regexp.MustCompile(`([\d.]+)% of ([\d.]+)(?:.*ETA ([\d:]+))?`)
+
 type Msg struct {
 	Key   string
-	Value string
+	Value interface{}
 }
 
-func httpHandlers() {
-	http.HandleFunc("/websocket", func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
+type Info struct {
+	Title     string
+	Extension string
+}
+type Progress struct {
+	Pct string
+	MiB string
+	ETA string
+}
+
+type Conn struct {
+	*websocket.Conn
+}
+
+func wsHandler(w http.ResponseWriter, r *http.Request) {
+
+	timeout := time.Duration(processTimeout * time.Second)
+	// The request has a timeout, so create a context that is
+	// canceled automatically when the timeout expires.
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel() // Cancel ctx as soon as handler returns.
+
+	gconn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	// wrap Gorilla conn with our conn
+	conn := Conn{gconn}
+
+	for {
+		msgType, raw, err := conn.ReadMessage()
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
 
-		for {
-			msgType, raw, err := conn.ReadMessage()
+		log.Printf("WS: read message %s\n", string(raw))
+
+		if msgType == websocket.TextMessage {
+			var msg Msg
+			err = json.Unmarshal(raw, &msg)
 			if err != nil {
-				fmt.Println(err)
+				log.Printf("json unmarshal error: %s", err)
 				return
 			}
 
-			fmt.Printf("ws recv msg: %s\n", raw)
-
-			if msgType == websocket.TextMessage {
-				var msg Msg
-				err = json.Unmarshal(raw, &msg)
-				if err != nil {
-					fmt.Printf("json unmarshal error: %s", err)
-					return
-				}
-
-				if msg.Key == "url" {
-					err = msgHandler(msg)
+			if msg.Key == "url" {
+				outCh := make(chan Msg)
+				errCh := make(chan error)
+				go func() {
+					err := msgHandler(ctx, outCh, msg)
 					if err != nil {
-						fmt.Println(err)
-						return
+						errCh <- err
+					}
+				}()
+
+			loop:
+				for {
+					select {
+					case m := <-outCh:
+						err := conn.writeMsg(m)
+						if err != nil {
+							errCh <- err
+						}
+					case err := <-errCh:
+						log.Printf("handler err: %s\n", err)
+						m := Msg{Key: "error", Value: err.Error()}
+						conn.writeMsg(m)
+						break loop
 					}
 				}
-			} else {
-				conn.Close()
-				fmt.Println(string(raw))
-				return
 			}
+		} else {
+			conn.Close()
+			return
 		}
-	})
-
-	webRoot := "html"
-	http.Handle("/", http.FileServer(http.Dir(webRoot)))
-
-	log.Printf("Listening on :3000...\n")
-	http.ListenAndServe(":3000", nil)
+		log.Printf("WS end main loop\n")
+	}
 }
 
-func msgHandler(msg Msg) error {
-
-	url, err := url.Parse(msg.Value)
+func (c Conn) writeMsg(val interface{}) error {
+	j, err := json.Marshal(val)
 	if err != nil {
-		fmt.Println(err)
+		return err
+	}
+	log.Printf("WS: write message %s\n", string(j))
+	if err = c.WriteMessage(websocket.TextMessage, j); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) error {
+
+	url, err := url.Parse(msg.Value.(string))
+	if err != nil {
 		return err
 	}
 
@@ -85,12 +140,11 @@ func msgHandler(msg Msg) error {
 	errCh := make(chan error)
 	cmdCh := make(chan string)
 	go func() {
-
-		fmt.Printf("Fetching url %s\n", url.String())
-		err := RunCommandCh(cmdCh, "\r\n", ytCmd, "--write-info-json", "--newline", "-o", fileName, url.String())
+		log.Printf("Fetching url %s\n", url.String())
+		args := []string{"--write-info-json", "-f", "worstaudio", "--newline", "-o", fileName, url.String()}
+		err := RunCommandCh(ctx, cmdCh, "\r\n", ytCmd, args...)
 		if err != nil {
 			errCh <- err
-			log.Println(err)
 		}
 	}()
 
@@ -119,7 +173,8 @@ func msgHandler(msg Msg) error {
 				errCh <- fmt.Errorf("info file json unmarshal error: %s", err)
 				break
 			}
-			fmt.Printf("info %v\n", info)
+			m := Msg{Key: "info", Value: info}
+			outCh <- m
 			break
 		}
 	}()
@@ -127,15 +182,39 @@ func msgHandler(msg Msg) error {
 loop:
 	for {
 		select {
-		case v, ok := <-cmdCh:
-			if !ok {
+		case v, open := <-cmdCh:
+			// is channel closed?
+			if !open {
+				log.Printf("msgHandler: output channel closed\n")
 				break loop
 			}
 			fmt.Println(v)
+
+			m := getProgress(v)
+			if m != nil {
+				outCh <- *m
+			}
 		case err := <-errCh:
 			return err
 		}
 	}
 
 	return nil
+}
+
+func getProgress(v string) *Msg {
+	var m *Msg
+	matches := progressRe.FindStringSubmatch(v)
+
+	if len(matches) == 4 {
+		m = new(Msg)
+		m.Key = "progress"
+		p := Progress{
+			Pct: matches[1],
+			MiB: matches[2],
+			ETA: matches[3],
+		}
+		m.Value = p
+	}
+	return m
 }
