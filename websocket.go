@@ -32,8 +32,10 @@ type Msg struct {
 }
 
 type Info struct {
-	Title     string
-	Extension string
+	Title       string
+	Filesize    int
+	Extension   string `json:"ext"`
+	DownloadURL string
 }
 type Progress struct {
 	Pct string
@@ -46,7 +48,6 @@ type Conn struct {
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
-
 	timeout := time.Duration(processTimeout * time.Second)
 	// The request has a timeout, so create a context that is
 	// canceled automatically when the timeout expires.
@@ -92,7 +93,11 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			loop:
 				for {
 					select {
-					case m := <-outCh:
+					case m, open := <-outCh:
+						if !open {
+							log.Printf("outCh closed\n")
+							break loop
+						}
 						err := conn.writeMsg(m)
 						if err != nil {
 							errCh <- err
@@ -127,7 +132,6 @@ func (c Conn) writeMsg(val interface{}) error {
 }
 
 func msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) error {
-
 	url, err := url.Parse(msg.Value.(string))
 	if err != nil {
 		return err
@@ -135,13 +139,16 @@ func msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) error {
 
 	// filename is md5 sum of URL
 	urlSum := md5.Sum([]byte(url.String()))
-	fileName := "ytdl-" + fmt.Sprintf("%x", urlSum)
+	fileName := fmt.Sprintf("%x", urlSum)
+	webFileName := "dl/ytdl-" + fileName
+	diskFileNameNoExt := webRoot + "/" + webFileName
+	ytFileName := diskFileNameNoExt + ".%(ext)s"
 
 	errCh := make(chan error)
 	cmdCh := make(chan string)
 	go func() {
 		log.Printf("Fetching url %s\n", url.String())
-		args := []string{"--write-info-json", "-f", "worstaudio", "--newline", "-o", fileName, url.String()}
+		args := []string{"--write-info-json", "-f", "worstaudio", "--newline", "-o", ytFileName, url.String()}
 		err := RunCommandCh(ctx, cmdCh, "\r\n", ytCmd, args...)
 		if err != nil {
 			errCh <- err
@@ -158,11 +165,13 @@ func msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) error {
 				break
 			}
 
+			infoFileName := diskFileNameNoExt + ".info.json"
+
 			time.Sleep(500 * time.Millisecond)
-			if _, err := os.Stat(fileName + ".info.json"); os.IsNotExist(err) {
+			if _, err := os.Stat(infoFileName); os.IsNotExist(err) {
 				continue
 			}
-			raw, err := ioutil.ReadFile(fileName + ".info.json")
+			raw, err := ioutil.ReadFile(infoFileName)
 			if err != nil {
 				errCh <- fmt.Errorf("info file read error: %s", err)
 				break
@@ -185,7 +194,11 @@ loop:
 		case v, open := <-cmdCh:
 			// is channel closed?
 			if !open {
+				// if we got here, then command completed successfully
 				log.Printf("msgHandler: output channel closed\n")
+				info.DownloadURL = webFileName + "." + info.Extension
+				m := Msg{Key: "link", Value: info}
+				outCh <- m
 				break loop
 			}
 			fmt.Println(v)
@@ -199,6 +212,7 @@ loop:
 		}
 	}
 
+	close(outCh)
 	return nil
 }
 

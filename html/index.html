@@ -1,25 +1,37 @@
 <!DOCTYPE HTML>
 <html>
 	<head>
+		<meta charset="utf-8" />
+		<title>ytdl-web</title>
 
 		<link href="app.css" rel="stylesheet">
 
-		<script src="https://code.jquery.com/jquery-3.2.1.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4=" crossorigin="anonymous"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
 		<script src="app.js"></script>
-
 	</head>
 	<body>
-		<div>
-			<textarea id="status" cols=80 rows=5></textarea>
-		</div>
-		<div>
-			<input type='text' size=50 id='url'>
-			<button id='go-button'>Get Video</button>
-		</div>
-		<div id='details'>
-			<span id='title'></span>
-			<div id='progress-bar'><span></span></div>
-			<span id='eta'></span>
+		<div class="container">
+			<h1>Youtube Video to Audio Converter</h1>
+			<div>
+				<input type='text' size=50 id='url' placeholder='Enter URL here...'>
+				<br>
+				<button id='go-button'>Convert Video</button>
+			</div>
+
+			<div id='output'>
+				<div id='progress-bar'><span>0%</span></div>
+				<div id='details'>
+					<label>Video Title:</label><span id='title'></span>
+					<br>
+					<label>ETA:</label><span id='eta'></span>
+					<br>
+					<label>Size:</label><span id='filesize'></span>
+				</div>
+				<div>
+					<textarea id="status" cols=80 rows=5></textarea>
+				</div>
+				<a id='link' href='#'>Download</a>
+			</div>
 		</div>
 	</body>
 </html>

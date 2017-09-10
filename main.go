@@ -6,7 +6,8 @@ import (
 )
 
 const (
-	ytCmd = "/usr/bin/youtube-dl"
+	ytCmd   = "/usr/bin/youtube-dl"
+	webRoot = "html"
 )
 
 func main() {
@@ -14,7 +15,6 @@ func main() {
 	log.Printf("Starting ytdl-web...\n")
 
 	http.HandleFunc("/websocket", wsHandler)
-	webRoot := "html"
 	http.Handle("/", http.FileServer(http.Dir(webRoot)))
 
 	log.Printf("Listening on :3000...\n")

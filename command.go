@@ -70,5 +70,6 @@ func RunCommandCh(ctx context.Context, stdoutCh chan<- string, cutset string, co
 		return fmt.Errorf("RunCommand: cmd.Wait() err: %s", err)
 	}
 	log.Printf("RunCommand: end\n")
+	close(stdoutCh)
 	return nil
 }
