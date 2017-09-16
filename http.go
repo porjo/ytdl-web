@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
@@ -13,10 +14,14 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"golang.org/x/net/context"
 )
 
-const processTimeout = 30 //seconds
+type timeout int
+
+const processTimeoutCtxKey timeout = 0
+
+// default process timeout if not explicitly set via handlerTimeout
+const DefaultProcessTimeout = 30
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -47,12 +52,25 @@ type Conn struct {
 	*websocket.Conn
 }
 
-func wsHandler(w http.ResponseWriter, r *http.Request) {
-	timeout := time.Duration(processTimeout * time.Second)
-	// The request has a timeout, so create a context that is
-	// canceled automatically when the timeout expires.
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel() // Cancel ctx as soon as handler returns.
+type wsHandler struct{}
+
+func handlerTimeout(next http.Handler, processTimeout int) http.Handler {
+
+	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		ctx := context.WithValue(req.Context(), processTimeoutCtxKey, processTimeout)
+		next.ServeHTTP(rw, req.WithContext(ctx))
+	})
+}
+
+func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	timeout, ok := r.Context().Value(processTimeoutCtxKey).(int)
+	fmt.Printf("timeout %v ok %v\n", timeout, ok)
+	if !ok {
+		timeout = DefaultProcessTimeout
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(timeout)*time.Second)
+	defer cancel()
 
 	gconn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -60,7 +78,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// wrap Gorilla conn with our conn
+	// wrap Gorilla conn with our conn so we can extend functionality
 	conn := Conn{gconn}
 
 	for {
@@ -118,7 +136,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (c Conn) writeMsg(val interface{}) error {
+func (c *Conn) writeMsg(val interface{}) error {
 	j, err := json.Marshal(val)
 	if err != nil {
 		return err

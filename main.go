@@ -14,7 +14,8 @@ func main() {
 
 	log.Printf("Starting ytdl-web...\n")
 
-	http.HandleFunc("/websocket", wsHandler)
+	ws := &wsHandler{}
+	http.Handle("/websocket", handlerTimeout(ws, 30))
 	http.Handle("/", http.FileServer(http.Dir(webRoot)))
 
 	log.Printf("Listening on :3000...\n")
