@@ -25,11 +25,17 @@ label {
 
 #details {
 	text-align: left;
+	border: 1px solid #ddd;
+	border-radius: 5px;
+	padding: 20px;
+	margin: 20px 0;
+	background-color: #eee;
 }
 
 #details label {
 	width: 20%;
 	display: inline-block;
+	text-align: right;
 }
 
 #link {

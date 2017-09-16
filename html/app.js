@@ -9,18 +9,19 @@ $(function(){
 			var url = $("#url").val();
 			var val = {Key: 'url', Value: url};
 			ws.send(JSON.stringify(val));
-			$("#status").append(url + "\n");
+			$("#status").append("Requesting URL " + url + "\n");
 		} else {
 			$("#status").append("socket not ready\n")
 		}
 	});
 
+	/*
 	ws.onopen = function() {
 	};
+	*/
 
 	ws.onmessage = function (e)	{
 		var msg = JSON.parse(e.data);
-		console.log(msg);
 		if( 'Key' in msg ) {
 			switch (msg.Key) {
 				case 'error':
@@ -34,7 +35,8 @@ $(function(){
 					break;
 				case 'info':
 					$("#title").text( msg.Value.Title );
-					$("#filesize").text( msg.Value.Filesize );
+					var bytes = parseFloat(msg.Value.Filesize)
+					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link':
 					$("#link").attr('href', msg.Value.DownloadURL)
