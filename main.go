@@ -2,9 +2,16 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 )
+
+const cleanupInterval = 30 // seconds
 
 func main() {
 
@@ -13,6 +20,7 @@ func main() {
 	outPath := flag.String("outPath", "dl", "where to store downloaded files (relative to web root)")
 	timeout := flag.Int("timeout", DefaultProcessTimeout, "process timeout (seconds)")
 	expiry := flag.Int("expiry", DefaultExpiry, "expire downloaded content (seconds)")
+	port := flag.Int("port", 8080, "listen on this port")
 	flag.Parse()
 
 	log.Printf("Starting ytdl-web...\n")
@@ -31,13 +39,48 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir(*webRoot)))
 
 	log.Printf("Starting cleanup routine...\n")
-	go contentCleanup(*outPath, *expiry)
+	expiryD := time.Second * time.Duration(*expiry)
+	go fileCleanup(*webRoot+"/"+*outPath, expiryD)
 
-	log.Printf("Listening on :3000...\n")
-	http.ListenAndServe(":3000", nil)
+	log.Printf("Listening on :%d...\n", *port)
+	err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 }
 
-func contentCleanup(outPath string, expiry int) {
+func fileCleanup(outPath string, expiry time.Duration) {
+	visit := func(path string, f os.FileInfo, err error) error {
 
+		if err != nil {
+			return err
+		}
+
+		if f.IsDir() || strings.HasPrefix(f.Name(), ".") {
+			return nil
+		}
+
+		// if last modification time is prior to expiry time,
+		// then delete the file
+		if f.ModTime().Before(time.Now().Add(-expiry)) {
+			if err := os.Remove(path); err != nil {
+				return err
+			}
+			log.Printf("old file removed: %s\n", path)
+		}
+		return nil
+	}
+
+	tickChan := time.NewTicker(time.Second * cleanupInterval).C
+
+	for {
+		select {
+		case <-tickChan:
+			err := filepath.Walk(outPath, visit)
+			if err != nil {
+				log.Printf("file cleanup error: %s\n", err)
+			}
+		}
+	}
 }
