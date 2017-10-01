@@ -79,7 +79,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		msgType, raw, err := conn.ReadMessage()
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 			return
 		}
 
@@ -108,7 +108,6 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					select {
 					case m, open := <-outCh:
 						if !open {
-							log.Printf("outCh closed\n")
 							break loop
 						}
 						err := conn.writeMsg(m)
