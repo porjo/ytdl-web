@@ -22,6 +22,9 @@ const DefaultProcessTimeout = 300
 // default content expiry in seconds
 const DefaultExpiry = 7200
 
+// maximum file size to download, in megabytes
+const MaxFileSizeMB = 100
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
@@ -160,7 +163,14 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 	cmdCh := make(chan string)
 	go func() {
 		log.Printf("Fetching url %s\n", url.String())
-		args := []string{"--write-info-json", "-f", "worstaudio", "--newline", "-o", ytFileName, url.String()}
+		args := []string{
+			"--write-info-json",
+			"--max-filesize", fmt.Sprintf("%dm", MaxFileSizeMB),
+			"-f", "worstaudio",
+			"--newline",
+			"-o", ytFileName,
+			url.String(),
+		}
 		err := RunCommandCh(ctx, cmdCh, "\r\n", ws.YTCmd, args...)
 		if err != nil {
 			errCh <- err
