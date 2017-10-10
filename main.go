@@ -18,6 +18,7 @@ func main() {
 	ytCmd := flag.String("cmd", "/usr/bin/youtube-dl", "path to youtube-dl")
 	webRoot := flag.String("webRoot", "html", "web root directory")
 	outPath := flag.String("outPath", "dl", "where to store downloaded files (relative to web root)")
+	prefix := flag.String("stripPrefix", "", "strip this prefix from incoming requests")
 	timeout := flag.Int("timeout", DefaultProcessTimeout, "process timeout (seconds)")
 	expiry := flag.Int("expiry", DefaultExpiry, "expire downloaded content (seconds)")
 	port := flag.Int("port", 8080, "listen on this port")
@@ -36,6 +37,7 @@ func main() {
 		OutPath: *outPath,
 	}
 	http.Handle("/websocket", ws)
+	http.Handle("/"+*prefix, http.StripPrefix("/"+*prefix, http.FileServer(http.Dir(*webRoot))))
 	http.Handle("/", http.FileServer(http.Dir(*webRoot)))
 
 	log.Printf("Starting cleanup routine...\n")
