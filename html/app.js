@@ -1,5 +1,17 @@
 
-var ws = new WebSocket("ws://localhost:3000/websocket");
+var loc = window.location, ws_uri;
+if (loc.protocol === "https:") {
+    ws_uri = "wss:";
+} else {
+    ws_uri = "ws:";
+}
+ws_uri += "//" + loc.host;
+if(loc.pathname == '/') {
+	ws_uri += "/websocket";
+} else {
+	ws_uri += loc.pathname + "/websocket";
+}
+var ws = new WebSocket(ws_uri);
 
 $(function(){
 

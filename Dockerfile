@@ -6,6 +6,7 @@ WORKDIR /go/src/github.com/porjo/ytdl-web
 
 RUN apk update && \
     apk upgrade && \
+	apk add git
 
 RUN go get github.com/gorilla/websocket
 
@@ -17,5 +18,5 @@ FROM alpine
 RUN apk --update add --no-cache youtube-dl
 
 WORKDIR /app/ytdl-web
-COPY --from=build-env /go/src/github.com/porjo/ytdl-web/ /app/
-ENTRYPOINT ["/app/ytdl-web/ytdl-web"]
+COPY --from=build-env /go/src/github.com/porjo/ytdl-web/ /app/ytdl-web
+CMD ["/app/ytdl-web/ytdl-web"]
