@@ -6,11 +6,9 @@ if (loc.protocol === "https:") {
     ws_uri = "ws:";
 }
 ws_uri += "//" + loc.host;
-if(loc.pathname == '/') {
-	ws_uri += "/websocket";
-} else {
-	ws_uri += loc.pathname + "/websocket";
-}
+var path = loc.pathname.replace(/\/$/, '');
+ws_uri += path + "/websocket";
+
 var ws = new WebSocket(ws_uri);
 
 $(function(){

@@ -19,4 +19,4 @@ RUN apk --update add --no-cache youtube-dl
 
 WORKDIR /app/ytdl-web
 COPY --from=build-env /go/src/github.com/porjo/ytdl-web/ /app/ytdl-web
-CMD ["/app/ytdl-web/ytdl-web"]
+ENTRYPOINT ["/app/ytdl-web/ytdl-web"]
