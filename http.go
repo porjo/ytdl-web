@@ -19,6 +19,9 @@ import (
 // default process timeout in seconds (if not explicitly set via flag)
 const DefaultProcessTimeout = 300
 
+const PingInterval = 30 * time.Second
+const WriteWait = 10 * time.Second
+
 // default content expiry in seconds
 const DefaultExpiry = 7200
 
@@ -49,13 +52,12 @@ type Progress struct {
 	MiB string
 	ETA string
 }
-
 type Conn struct {
 	*websocket.Conn
 }
 
 type wsHandler struct {
-	Timeout int
+	Timeout time.Duration
 	WebRoot string
 	YTCmd   string
 	OutPath string
@@ -63,10 +65,10 @@ type wsHandler struct {
 
 func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ws.Timeout == 0 {
-		ws.Timeout = DefaultProcessTimeout
+		ws.Timeout = time.Duration(DefaultProcessTimeout) * time.Second
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(ws.Timeout)*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	gconn, err := upgrader.Upgrade(w, r, nil)
@@ -79,10 +81,28 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// wrap Gorilla conn with our conn so we can extend functionality
 	conn := Conn{gconn}
 
+	// setup ping/pong to keep connection open
+	go func() {
+		c := time.Tick(PingInterval)
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("ping: context done\n")
+				return
+			case <-c:
+				// WriteControl can be called concurrently
+				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WriteWait)); err != nil {
+					log.Printf("WS: ping client, err %s\n", err)
+					return
+				}
+			}
+		}
+	}()
+
 	for {
 		msgType, raw, err := conn.ReadMessage()
 		if err != nil {
-			log.Println(err)
+			log.Printf("WS: ReadMessage err %s\n", err)
 			return
 		}
 
@@ -92,7 +112,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			var msg Msg
 			err = json.Unmarshal(raw, &msg)
 			if err != nil {
-				log.Printf("json unmarshal error: %s", err)
+				log.Printf("json unmarshal error: %s\n", err)
 				return
 			}
 
@@ -126,6 +146,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		} else {
+			log.Printf("unknown message type - close websocket\n")
 			conn.Close()
 			return
 		}
@@ -152,6 +173,10 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		return err
 	}
 
+	if url.String() == "" {
+		return fmt.Errorf("url was empty")
+	}
+
 	// filename is md5 sum of URL
 	urlSum := md5.Sum([]byte(url.String()))
 	fileName := fmt.Sprintf("%x", urlSum)
@@ -174,7 +199,9 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 			"-o", ytFileName,
 			url.String(),
 		}
-		err := RunCommandCh(ctx, cmdCh, "\r\n", ws.YTCmd, args...)
+		tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
+		defer cancel()
+		err := RunCommandCh(tCtx, cmdCh, "\r\n", ws.YTCmd, args...)
 		if err != nil {
 			errCh <- err
 		}

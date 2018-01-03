@@ -31,7 +31,7 @@ func main() {
 
 	ws := &wsHandler{
 		WebRoot: *webRoot,
-		Timeout: *timeout,
+		Timeout: time.Duration(*timeout) * time.Second,
 		YTCmd:   *ytCmd,
 		OutPath: *outPath,
 	}

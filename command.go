@@ -26,7 +26,7 @@ func RunCommandCh(ctx context.Context, stdoutCh chan<- string, cutset string, co
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("RunCommand: killing cmd on signal\n")
+			log.Printf("RunCommand: process time expired, killing cmd\n")
 			err := cmd.Process.Kill()
 			if err != nil {
 				log.Panic(err)
