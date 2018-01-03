@@ -63,7 +63,7 @@ func fileCleanup(outPath string, expiry time.Duration) {
 
 		// if last modification time is prior to expiry time,
 		// then delete the file
-		if f.ModTime().Before(time.Now().Add(-expiry)) {
+		if time.Now().Sub(f.ModTime()) > expiry {
 			if err := os.Remove(path); err != nil {
 				return err
 			}

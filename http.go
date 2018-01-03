@@ -167,7 +167,10 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 			"--write-info-json",
 			"--max-filesize", fmt.Sprintf("%dm", MaxFileSizeMB),
 			"-f", "worstaudio",
+			// output progress bar as newlines
 			"--newline",
+			// Do not use the Last-modified header to set the file modification time
+			"--no-mtime",
 			"-o", ytFileName,
 			url.String(),
 		}
