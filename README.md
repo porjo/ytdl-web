@@ -1,9 +1,15 @@
 ## ytdl-web
 
+### Install
+
+- clone repo. Either use `git clone` or `go get`
+- build Docker container: `dockger build -t ytdl-web .`
+- (optionally) configure Nginx proxy (see config below)
+- run Docker container: `docker run -it -p 8080:8080 ytdl-web`
 
 ### Nginx config
 
-When using Nginx as a frontend proxy, the following sample config may be useful:
+When using Nginx as a frontend proxy, the following location block config can be used:
 
 
 ```
