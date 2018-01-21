@@ -33,8 +33,20 @@ h1 {
 	font-weight: bold;
 }
 
-textarea {
-	margin: 10px;
+input[type="text"] {
+	width: 100%;
+	padding: 0 10px;
+	box-sizing: border-box;
+	-moz-box-sizing: border-box;
+	-webkit-box-sizing: border-box;
+}
+
+#status {
+	font-family: monospace;
+	overflow: auto;
+	border: 1px solid #aaa;
+	margin: 10px 0;
+	padding: 10px;
 }
 
 label {
