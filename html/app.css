@@ -29,6 +29,8 @@ body {
 }
 
 h1 {
+	margin-top: 20px;
+	margin-bottom: 30px;
 	font-size: 2em;
 	font-weight: bold;
 }
@@ -58,6 +60,13 @@ label {
 	max-width: 800px;
 	margin: 0 auto;
 	text-align: center;
+}
+
+#footer {
+	margin-top: 40px;
+	font-size: 0.8em;
+	border-top: 1px #ddd solid;
+	padding: 10px;
 }
 
 #go-button {
