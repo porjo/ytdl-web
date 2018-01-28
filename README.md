@@ -1,9 +1,17 @@
 ## ytdl-web
 
+Simple web app that takes a Youtube video URL and produces a downloadable audio file.
+
 ### Install
 
-- clone repo. Either use `git clone` or `go get`
-- build Docker container: `dockger build -t ytdl-web .`
+Use prebuilt Docker image from Docker hub:
+```
+$ docker pull porjo/ytdl-web
+```
+
+or clone this Github repo and run `docker build` on it.
+
+then:
 - (optionally) configure Nginx proxy (see config below)
 - run Docker container: `docker run -it -p 8080:8080 ytdl-web`
 

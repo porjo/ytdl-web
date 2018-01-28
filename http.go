@@ -190,6 +190,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		log.Printf("Fetching url %s\n", url.String())
 		args := []string{
 			"--write-info-json",
+			"--external-downloader", "aria2c",
 			"--max-filesize", fmt.Sprintf("%dm", MaxFileSizeMB),
 			"-f", "worstaudio",
 			// output progress bar as newlines
