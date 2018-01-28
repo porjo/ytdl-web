@@ -191,6 +191,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		args := []string{
 			"--write-info-json",
 			"--external-downloader", "aria2c",
+			"--add-metadata",
 			"--max-filesize", fmt.Sprintf("%dm", MaxFileSizeMB),
 			"-f", "worstaudio",
 			// output progress bar as newlines
