@@ -37,4 +37,3 @@ When using Nginx as a frontend proxy, the following location block config can be
 			proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
 		}
 ```
-
