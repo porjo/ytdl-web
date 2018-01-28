@@ -2,6 +2,8 @@
 
 Simple web app that takes a Youtube video URL and produces a downloadable audio file.
 
+![Screenshot](https://porjo.github.io/ytdl-web/screenshot.png)
+
 ### Install
 
 Use prebuilt Docker image from Docker hub:
