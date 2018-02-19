@@ -34,7 +34,9 @@ var upgrader = websocket.Upgrader{
 }
 
 // capture progress output e.g '73.2% of 6.25MiB ETA 00:01'
-var progressRe = regexp.MustCompile(`([\d.]+)% of ([\d.]+)(?:.*ETA ([\d:]+))?`)
+//var progressRe = regexp.MustCompile(`([\d.]+)% of ([\d.]+)(?:.*ETA ([\d:]+))?`)
+// [#c7c8f2 11MiB/30MiB(37%) CN:4 DL:1.1MiB ETA:16s]
+var progressRe = regexp.MustCompile(`(?:[\d.]+)[^ ]+\/([\d.]+)[^ ]+\(([0-9]+)%\).*ETA:([0-9]+)`)
 
 type Msg struct {
 	Key   string
@@ -278,8 +280,8 @@ func getProgress(v string) *Msg {
 		m = new(Msg)
 		m.Key = "progress"
 		p := Progress{
-			Pct: matches[1],
-			MiB: matches[2],
+			Pct: matches[2],
+			MiB: matches[1],
 			ETA: matches[3],
 		}
 		m.Value = p

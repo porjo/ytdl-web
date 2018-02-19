@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	//	"os"
+	"bufio"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 // RunCommandCh runs an arbitrary command and streams output to a channnel.
@@ -14,10 +17,67 @@ import (
 func RunCommandCh(ctx context.Context, stdoutCh chan<- string, cutset string, command string, flags ...string) error {
 	cmd := exec.Command(command, flags...)
 
-	output, err := cmd.StdoutPipe()
+	var wg sync.WaitGroup
+
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("RunCommand: cmd.StdoutPipe(): %v", err)
 	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("RunCommand: cmd.StderrPipe(): %v", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("RunCommand: cmd.Start(): %v", err)
+	}
+
+	outch := make(chan string, 10)
+
+	scannerStdout := bufio.NewScanner(stdout)
+	scannerStdout.Split(ScanLinesR)
+	wg.Add(1)
+	go func() {
+		for scannerStdout.Scan() {
+			text := scannerStdout.Text()
+			if strings.TrimSpace(text) != "" {
+				outch <- text
+			}
+		}
+		wg.Done()
+	}()
+	scannerStderr := bufio.NewScanner(stderr)
+	scannerStderr.Split(ScanLinesR)
+	wg.Add(1)
+	go func() {
+		for scannerStderr.Scan() {
+			text := scannerStderr.Text()
+			if strings.TrimSpace(text) != "" {
+				outch <- text
+			}
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		wg.Wait()
+		close(outch)
+	}()
+
+	/*
+		output, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("RunCommand: cmd.StdoutPipe(): %v", err)
+		}
+		stdErr, err := cmd.StderrPipe()
+		if err != nil {
+			return fmt.Errorf("RunCommand: cmd.StderrPipe(): %v", err)
+		}
+
+		/*
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+	*/
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("RunCommand: cmd.Start(): %v", err)
@@ -44,6 +104,7 @@ func RunCommandCh(ctx context.Context, stdoutCh chan<- string, cutset string, co
 			return err
 		}
 		text := strings.Trim(string(buf[:n]), " ")
+
 		for {
 			// Take the index of any of the given cutset
 			n := strings.IndexAny(text, cutset)
