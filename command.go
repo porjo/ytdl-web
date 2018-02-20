@@ -1,58 +1,48 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"fmt"
-	//	"io"
-	"bufio"
-	"log"
-	//	"os"
+	"io"
+	"os"
 	"os/exec"
-	"strings"
 )
 
-// RunCommandCh runs an arbitrary command and streams output to a channnel.
-// Based on: https://bountify.co/golang-parse-stdout
-func RunCommandCh(ctx context.Context, stdoutCh chan<- string, command string, flags ...string) error {
-	fmt.Printf("%v %v\n", command, flags)
-	cmd := exec.Command(command, flags...)
+func RunCommandCh(ctx context.Context, w io.WriteCloser, command string, flags ...string) error {
+	defer w.Close() // this will unblock the reader
+	cmd := exec.CommandContext(ctx, command, flags...)
+	cmd.Stdout = w
+	cmd.Stderr = os.Stderr // or set this to w as well
+	return cmd.Run()
+}
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("RunCommand: cmd.StdoutPipe(): %v", err)
+func scanCR(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	if atEOF && len(data) == 0 {
+		return 0, nil, nil
 	}
 
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("RunCommand: cmd.Start(): %v", err)
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		return i + 1, dropCR(data[0:i]), nil
+	}
+	if i := bytes.IndexByte(data, '\r'); i >= 0 {
+		return i + 1, data[0:i], nil
 	}
 
-	scannerStdout := bufio.NewScanner(stdout)
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				log.Printf("RunCommand: process time expired, killing cmd\n")
-				err := cmd.Process.Kill()
-				if err != nil {
-					log.Panic(err)
-				}
-				return
-			default:
-			}
-			if scannerStdout.Scan() {
-				text := scannerStdout.Text()
-				if strings.TrimSpace(text) != "" {
-					stdoutCh <- text
-				}
-			} else {
-				return
-			}
-		}
-	}()
-
-	if err := cmd.Wait(); err != nil {
-		return err
+	// If we're at EOF, we have a final, non-terminated line. Return it.
+	if atEOF {
+		return len(data), dropCR(data), nil
 	}
-	close(stdoutCh)
-	return nil
+
+	// Request more data.
+	return 0, nil, nil
+}
+
+// dropCR drops a terminal \r from the data.
+func dropCR(data []byte) []byte {
+	if len(data) > 0 && data[len(data)-1] == '\r' {
+
+		return data[0 : len(data)-1]
+
+	}
+	return data
 }

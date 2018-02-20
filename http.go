@@ -1,16 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -170,6 +173,7 @@ func (c *Conn) writeMsg(val interface{}) error {
 }
 
 func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) error {
+	defer close(outCh)
 	url, err := url.Parse(msg.Value.(string))
 	if err != nil {
 		return err
@@ -187,29 +191,6 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 	ytFileName := diskFileNameNoExt + ".%(ext)s"
 
 	errCh := make(chan error)
-	cmdCh := make(chan string)
-	go func() {
-		log.Printf("Fetching url %s\n", url.String())
-		args := []string{
-			"--write-info-json",
-			"--external-downloader", "aria2c",
-			"--add-metadata",
-			"--max-filesize", fmt.Sprintf("%dm", MaxFileSizeMB),
-			"-f", "worstaudio",
-			// output progress bar as newlines
-			"--newline",
-			// Do not use the Last-modified header to set the file modification time
-			"--no-mtime",
-			"-o", ytFileName,
-			url.String(),
-		}
-		tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
-		defer cancel()
-		err := RunCommandCh(tCtx, cmdCh, ws.YTCmd, args...)
-		if err != nil {
-			errCh <- err
-		}
-	}()
 
 	var info Info
 	go func() {
@@ -244,32 +225,57 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		}
 	}()
 
-loop:
-	for {
-		select {
-		case v, open := <-cmdCh:
-			// is channel closed?
-			if !open {
-				// if we got here, then command completed successfully
-				log.Printf("msgHandler: output channel closed\n")
-				info.DownloadURL = webFileName + "." + info.Extension
-				m := Msg{Key: "link", Value: info}
-				outCh <- m
-				break loop
-			}
-			fmt.Printf("out: %s", v)
+	rPipe, wPipe := io.Pipe()
+	defer rPipe.Close()
 
-			m := getProgress(v)
-			if m != nil {
-				outCh <- *m
+	go func() {
+		scannerStdout := bufio.NewScanner(rPipe)
+		scannerStdout.Split(scanCR)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
 			}
-		case err := <-errCh:
-			return err
+
+			if scannerStdout.Scan() {
+				text := scannerStdout.Text()
+				if strings.TrimSpace(text) != "" {
+					fmt.Printf("out: %s\n", text)
+					m := getProgress(text)
+					if m != nil {
+						outCh <- *m
+					}
+				}
+			} else {
+				errCh <- scannerStdout.Err()
+				return
+			}
 		}
-	}
+	}()
 
-	close(outCh)
-	return nil
+	go func() {
+		log.Printf("Fetching url %s\n", url.String())
+		args := []string{
+			"--write-info-json",
+			"--external-downloader", "aria2c",
+			"--add-metadata",
+			"--max-filesize", fmt.Sprintf("%dm", MaxFileSizeMB),
+			"-f", "worstaudio",
+			// output progress bar as newlines
+			"--newline",
+			// Do not use the Last-modified header to set the file modification time
+			"--no-mtime",
+			"-o", ytFileName,
+			url.String(),
+		}
+		tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
+		defer cancel()
+		err = RunCommandCh(tCtx, wPipe, ws.YTCmd, args...)
+		errCh <- err
+	}()
+
+	return <-errCh
 }
 
 func getProgress(v string) *Msg {
