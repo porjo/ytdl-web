@@ -205,7 +205,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		}
 		tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
 		defer cancel()
-		err := RunCommandCh(tCtx, cmdCh, "\r\n", ws.YTCmd, args...)
+		err := RunCommandCh(tCtx, cmdCh, ws.YTCmd, args...)
 		if err != nil {
 			errCh <- err
 		}
@@ -257,7 +257,7 @@ loop:
 				outCh <- m
 				break loop
 			}
-			fmt.Println(v)
+			fmt.Printf("out: %s", v)
 
 			m := getProgress(v)
 			if m != nil {
