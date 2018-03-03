@@ -39,7 +39,8 @@ var upgrader = websocket.Upgrader{
 // capture progress output e.g '73.2% of 6.25MiB ETA 00:01'
 //var progressRe = regexp.MustCompile(`([\d.]+)% of ([\d.]+)(?:.*ETA ([\d:]+))?`)
 // [#c7c8f2 11MiB/30MiB(37%) CN:4 DL:1.1MiB ETA:16s]
-var progressRe = regexp.MustCompile(`(?:[\d.]+)[^ ]+\/([\d.]+)[^ ]+\(([0-9]+)%\).*ETA:([0-9]+)`)
+//var progressRe = regexp.MustCompile(`(?:[\d.]+)[^ ]+\/([\d.]+)[^ ]+\(([0-9]+)%\).*ETA:([0-9]+)`)
+var progressRe = regexp.MustCompile(`\[#\w+ \d+\.?\d*\w+\/(\d+\.?\d*)\w+\((\d+)%\) CN:\d DL:\d+\.?\d*\w+(?: ETA:(\d+\w))?\]`)
 
 type Msg struct {
 	Key   string
@@ -259,6 +260,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		args := []string{
 			"--write-info-json",
 			"--external-downloader", "aria2c",
+			"--external-downloader-args", "\"--stderr=true\"",
 			"--add-metadata",
 			"--max-filesize", fmt.Sprintf("%dm", MaxFileSizeMB),
 			"-f", "worstaudio",
