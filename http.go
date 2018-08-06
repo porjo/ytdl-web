@@ -1,26 +1,26 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/porjo/braid"
 )
 
 // default process timeout in seconds (if not explicitly set via flag)
 const DefaultProcessTimeout = 300
+const ClientJobs = 5
 
 const PingInterval = 30 * time.Second
 const WriteWait = 10 * time.Second
@@ -47,11 +47,16 @@ type Msg struct {
 	Value interface{}
 }
 
-type Info struct {
-	Title       string
-	Filesize    int
-	Extension   string `json:"ext"`
-	DownloadURL string
+type Meta struct {
+	Id      string
+	Title   string
+	Formats []MetaFormat
+}
+
+type MetaFormat struct {
+	Filesize  int
+	Extension string `json:"ext"`
+	URL       string
 }
 type Progress struct {
 	Pct string
@@ -132,11 +137,13 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					}
 				}()
 
+				log.Printf("enter loop\n")
 			loop:
 				for {
 					select {
 					case m, open := <-outCh:
 						if !open {
+							log.Printf("break loop\n")
 							break loop
 						}
 						err := conn.writeMsg(m)
@@ -144,7 +151,6 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 							errCh <- err
 						}
 					case err := <-errCh:
-						log.Printf("handler err: %s\n", err)
 						m := Msg{Key: "error", Value: err.Error()}
 						conn.writeMsg(m)
 						break loop
@@ -189,110 +195,104 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 	fileName := fmt.Sprintf("%x", urlSum)
 	webFileName := ws.OutPath + "/ytdl-" + fileName
 	diskFileNameNoExt := ws.WebRoot + "/" + webFileName
-	ytFileName := diskFileNameNoExt + ".%(ext)s"
+	ytFileName := diskFileNameNoExt
 
 	errCh := make(chan error)
 
-	var info Info
-	go func() {
-		count := 0
-		for {
-			count++
-			if count > 20 {
-				errCh <- fmt.Errorf("waited too long for info file")
-				break
-			}
-
-			infoFileName := diskFileNameNoExt + ".info.json"
-
-			time.Sleep(500 * time.Millisecond)
-			if _, err := os.Stat(infoFileName); os.IsNotExist(err) {
-				continue
-			}
-			raw, err := ioutil.ReadFile(infoFileName)
-			if err != nil {
-				errCh <- fmt.Errorf("info file read error: %s", err)
-				break
-			}
-
-			err = json.Unmarshal(raw, &info)
-			if err != nil {
-				errCh <- fmt.Errorf("info file json unmarshal error: %s", err)
-				break
-			}
-			m := Msg{Key: "info", Value: info}
-			outCh <- m
-			break
-		}
-	}()
+	var meta Meta
 
 	rPipe, wPipe := io.Pipe()
 	defer rPipe.Close()
 
 	go func() {
-		scannerStdout := bufio.NewScanner(rPipe)
-		scannerStdout.Split(scanCR)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
+		dec := json.NewDecoder(rPipe)
+		err := dec.Decode(&meta)
+		if err != nil {
+			errCh <- err
+		}
 
-			if scannerStdout.Scan() {
-				text := scannerStdout.Text()
-				if strings.TrimSpace(text) != "" {
-					fmt.Printf("out: %s\n", text)
-					m := getProgress(text)
-					if m != nil {
-						outCh <- *m
-					}
-				}
-			} else {
-				errCh <- scannerStdout.Err()
-				return
+		durl := ""
+		smallest := 0
+		for _, f := range meta.Formats {
+			if smallest == 0 || (f.Filesize < smallest && f.Filesize > 0) {
+				durl = f.URL
+				ytFileName += "." + f.Extension
+				smallest = f.Filesize
 			}
 		}
+		fmt.Printf("durl %s\n", durl)
+
+		outCh <- Msg{Key: "info", Value: meta}
+
+		var r *braid.Request
+		ctx := context.Background()
+		r, err = braid.NewRequest()
+		if err != nil {
+			errCh <- err
+		}
+		r.SetJobs(ClientJobs)
+		braid.SetLogger(log.Printf)
+		go func() {
+			GetProgress(ctx, outCh, r)
+		}()
+		var file *os.File
+
+		tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
+		defer cancel()
+		file, err = r.FetchFile(tCtx, durl, ytFileName)
+		if err != nil {
+			errCh <- err
+		}
+		file.Close()
+
+		errCh <- nil
 	}()
 
 	go func() {
 		log.Printf("Fetching url %s\n", url.String())
 		args := []string{
-			"--write-info-json",
-			"--external-downloader", "aria2c",
-			"--external-downloader-args", "\"--stderr=true\"",
-			"--add-metadata",
-			"--max-filesize", fmt.Sprintf("%dm", MaxFileSizeMB),
-			"-f", "worstaudio",
-			// output progress bar as newlines
-			"--newline",
-			// Do not use the Last-modified header to set the file modification time
-			"--no-mtime",
-			"-o", ytFileName,
+			"-j", // write json to stdout only
 			url.String(),
 		}
-		tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
-		defer cancel()
-		err = RunCommandCh(tCtx, wPipe, ws.YTCmd, args...)
-		errCh <- err
+		err = RunCommandCh(ctx, wPipe, ws.YTCmd, args...)
+		if err != nil {
+			errCh <- err
+		}
 	}()
 
-	return <-errCh
+	err1 := <-errCh
+	fmt.Printf("errCh err %s\n", err1)
+	return err1
 }
 
-func getProgress(v string) *Msg {
-	var m *Msg
-	matches := progressRe.FindStringSubmatch(v)
+func GetProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
+	ticker := time.Tick(time.Second)
 
-	if len(matches) == 4 {
-		m = new(Msg)
-		m.Key = "progress"
-		p := Progress{
-			Pct: matches[2],
-			MiB: matches[1],
-			ETA: matches[3],
+	start := time.Now()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker:
+			stats := r.Stats()
+
+			pct := float64(stats.ReadBytes) / float64(stats.TotalBytes) * 100.0
+			mib := float64(stats.TotalBytes) / 1024 / 1024
+
+			dur := time.Now().Sub(start)
+
+			rem := float64(dur) / pct * (100 - pct)
+			eta := time.Duration(rem).String()
+
+			m := Msg{}
+			m.Key = "progress"
+			p := Progress{
+				Pct: strconv.FormatFloat(pct, 'f', 2, 64),
+				MiB: strconv.FormatFloat(mib, 'f', 2, 64),
+				ETA: eta,
+			}
+			m.Value = p
+			outCh <- m
 		}
-		m.Value = p
 	}
-	return m
 }
