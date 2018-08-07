@@ -9,13 +9,14 @@ RUN apk update && \
 	apk add git
 
 RUN go get github.com/gorilla/websocket
+RUN go get github.com/porjo/braid
 
 RUN go build -o ytdl-web
 
 # Final stage
 FROM alpine
 
-RUN apk --update add --no-cache youtube-dl aria2
+RUN apk --update add --no-cache youtube-dl
 
 WORKDIR /app/ytdl-web
 COPY --from=build-env /go/src/github.com/porjo/ytdl-web/ /app/ytdl-web

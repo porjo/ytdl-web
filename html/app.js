@@ -45,7 +45,7 @@ $(function(){
 					break;
 				case 'info':
 					$("#title").text( msg.Value.Title );
-					var bytes = parseFloat(msg.Value.Filesize)
+					var bytes = parseFloat(msg.Value.FileSize)
 					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link':

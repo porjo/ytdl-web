@@ -3,14 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
-	//"os"
 	"os/exec"
 )
 
 func RunCommandCh(ctx context.Context, w io.WriteCloser, command string, flags ...string) error {
-	fmt.Printf("cmd: %s %v\n", command, flags)
 	defer w.Close() // this will unblock the reader
 	cmd := exec.CommandContext(ctx, command, flags...)
 	cmd.Stdout = w

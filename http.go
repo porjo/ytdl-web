@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -36,12 +34,6 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-// capture progress output e.g '73.2% of 6.25MiB ETA 00:01'
-//var progressRe = regexp.MustCompile(`([\d.]+)% of ([\d.]+)(?:.*ETA ([\d:]+))?`)
-// [#c7c8f2 11MiB/30MiB(37%) CN:4 DL:1.1MiB ETA:16s]
-//var progressRe = regexp.MustCompile(`(?:[\d.]+)[^ ]+\/([\d.]+)[^ ]+\(([0-9]+)%\).*ETA:([0-9]+)`)
-var progressRe = regexp.MustCompile(`\[#\w+ \d+\.?\d*\w+\/(\d+\.?\d*)\w+\((\d+)%\) CN:\d DL:\d+\.?\d*\w+(?: ETA:(\d+\w))?\]`)
-
 type Msg struct {
 	Key   string
 	Value interface{}
@@ -54,13 +46,21 @@ type Meta struct {
 }
 
 type MetaFormat struct {
-	Filesize  int
+	FileSize  int
+	Vcodec    string
+	Acodec    string
 	Extension string `json:"ext"`
 	URL       string
 }
+
+type Info struct {
+	Title       string
+	FileSize    int
+	DownloadURL string
+}
+
 type Progress struct {
 	Pct string
-	MiB string
 	ETA string
 }
 type Conn struct {
@@ -141,9 +141,12 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			loop:
 				for {
 					select {
+					case <-ctx.Done():
+						log.Printf("break loop1\n")
+						break loop
 					case m, open := <-outCh:
 						if !open {
-							log.Printf("break loop\n")
+							log.Printf("break loop2\n")
 							break loop
 						}
 						err := conn.writeMsg(m)
@@ -180,7 +183,6 @@ func (c *Conn) writeMsg(val interface{}) error {
 }
 
 func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) error {
-	defer close(outCh)
 	url, err := url.Parse(msg.Value.(string))
 	if err != nil {
 		return err
@@ -190,12 +192,11 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		return fmt.Errorf("url was empty")
 	}
 
-	// filename is md5 sum of URL
-	urlSum := md5.Sum([]byte(url.String()))
-	fileName := fmt.Sprintf("%x", urlSum)
-	webFileName := ws.OutPath + "/ytdl-" + fileName
-	diskFileNameNoExt := ws.WebRoot + "/" + webFileName
-	ytFileName := diskFileNameNoExt
+	ctxHandler, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	webFileName := ws.OutPath + "/ytdl-"
+	diskFileName := ws.WebRoot + "/" + webFileName
 
 	errCh := make(chan error)
 
@@ -212,20 +213,23 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		}
 
 		durl := ""
-		smallest := 0
+		fileSize := 0
+		ext := ""
 		for _, f := range meta.Formats {
-			if smallest == 0 || (f.Filesize < smallest && f.Filesize > 0) {
+			if fileSize == 0 ||
+				(f.FileSize < fileSize && f.FileSize > 0 && f.Vcodec == "none") {
 				durl = f.URL
-				ytFileName += "." + f.Extension
-				smallest = f.Filesize
+				ext = f.Extension
+				fileSize = f.FileSize
 			}
 		}
-		fmt.Printf("durl %s\n", durl)
+		diskFileName += meta.Title + "." + ext
+		webFileName += meta.Title + "." + ext
 
-		outCh <- Msg{Key: "info", Value: meta}
+		i := Info{Title: meta.Title, FileSize: fileSize}
+		outCh <- Msg{Key: "info", Value: i}
 
 		var r *braid.Request
-		ctx := context.Background()
 		r, err = braid.NewRequest()
 		if err != nil {
 			errCh <- err
@@ -233,17 +237,20 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		r.SetJobs(ClientJobs)
 		braid.SetLogger(log.Printf)
 		go func() {
-			GetProgress(ctx, outCh, r)
+			GetProgress(ctxHandler, outCh, r)
 		}()
 		var file *os.File
 
-		tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
+		tCtx, cancel := context.WithTimeout(ctxHandler, ws.Timeout)
 		defer cancel()
-		file, err = r.FetchFile(tCtx, durl, ytFileName)
+		file, err = r.FetchFile(tCtx, durl, diskFileName)
 		if err != nil {
 			errCh <- err
 		}
 		file.Close()
+
+		m := Msg{Key: "link", Value: Info{DownloadURL: webFileName}}
+		outCh <- m
 
 		errCh <- nil
 	}()
@@ -254,15 +261,13 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 			"-j", // write json to stdout only
 			url.String(),
 		}
-		err = RunCommandCh(ctx, wPipe, ws.YTCmd, args...)
+		err = RunCommandCh(ctxHandler, wPipe, ws.YTCmd, args...)
 		if err != nil {
 			errCh <- err
 		}
 	}()
 
-	err1 := <-errCh
-	fmt.Printf("errCh err %s\n", err1)
-	return err1
+	return <-errCh
 }
 
 func GetProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
@@ -276,19 +281,16 @@ func GetProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
 		case <-ticker:
 			stats := r.Stats()
 
-			pct := float64(stats.ReadBytes) / float64(stats.TotalBytes) * 100.0
-			mib := float64(stats.TotalBytes) / 1024 / 1024
-
+			pct := float64(stats.ReadBytes) / float64(stats.TotalBytes) * 100
 			dur := time.Now().Sub(start)
 
 			rem := float64(dur) / pct * (100 - pct)
-			eta := time.Duration(rem).String()
+			eta := time.Duration(rem).Round(time.Second).String()
 
 			m := Msg{}
 			m.Key = "progress"
 			p := Progress{
 				Pct: strconv.FormatFloat(pct, 'f', 2, 64),
-				MiB: strconv.FormatFloat(mib, 'f', 2, 64),
 				ETA: eta,
 			}
 			m.Value = p
