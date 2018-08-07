@@ -137,16 +137,13 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					}
 				}()
 
-				log.Printf("enter loop\n")
 			loop:
 				for {
 					select {
 					case <-ctx.Done():
-						log.Printf("break loop1\n")
 						break loop
 					case m, open := <-outCh:
 						if !open {
-							log.Printf("break loop2\n")
 							break loop
 						}
 						err := conn.writeMsg(m)

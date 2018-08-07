@@ -16,7 +16,7 @@ RUN go build -o ytdl-web
 # Final stage
 FROM alpine
 
-RUN apk --update add --no-cache youtube-dl
+RUN apk --update add --no-cache youtube-dl ca-certificates
 
 WORKDIR /app/ytdl-web
 COPY --from=build-env /go/src/github.com/porjo/ytdl-web/ /app/ytdl-web
