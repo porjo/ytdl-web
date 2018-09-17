@@ -49,7 +49,7 @@ $(function(){
 					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link':
-					$("#link").attr('href', msg.Value.DownloadURL)
+					$("#link").attr('href', encodeURI(msg.Value.DownloadURL))
 						.css('display', 'inline-block');
 					break;
 			}
