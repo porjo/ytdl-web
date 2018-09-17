@@ -232,6 +232,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 
 		sanitizedTitle := filenameReplacer.Replace(meta.Title)
 		sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
+		sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
 		diskFileName += sanitizedTitle + "." + ext
 		webFileName += sanitizedTitle + "." + ext
 
@@ -291,6 +292,9 @@ func GetProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
 			stats := r.Stats()
 
 			pct := float64(stats.ReadBytes) / float64(stats.TotalBytes) * 100
+			if pct == 0 {
+				pct = 0.1
+			}
 			dur := time.Now().Sub(start)
 
 			rem := float64(dur) / pct * (100 - pct)
