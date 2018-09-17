@@ -51,6 +51,8 @@ $(function(){
 				case 'link':
 					$("#link").attr('href', encodeURI(msg.Value.DownloadURL))
 						.css('display', 'inline-block');
+					$("#progress-bar > span").css("width", "100%")
+						.text("100%");
 					break;
 			}
 		}

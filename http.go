@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -30,7 +31,12 @@ const DefaultExpiry = 7200
 // maximum file size to download, in megabytes
 const MaxFileSizeMB = 100
 
-var filenameRegexp = regexp.MustCompile("[^0-9A-Za-z_. -]+")
+// filename sanitization
+// swap specific characters
+var filenameReplacer = strings.NewReplacer("(", "_", ")", "_", "&", "+", "'", ",", "—", "-")
+
+// remove all remaining non-allowed characters
+var filenameRegexp = regexp.MustCompile("[^0-9A-Za-z_. +,-]+")
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -224,7 +230,8 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 			}
 		}
 
-		sanitizedTitle := filenameRegexp.ReplaceAllString(meta.Title, "")
+		sanitizedTitle := filenameReplacer.Replace(meta.Title)
+		sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
 		diskFileName += sanitizedTitle + "." + ext
 		webFileName += sanitizedTitle + "." + ext
 
@@ -273,7 +280,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 }
 
 func GetProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
-	ticker := time.Tick(time.Second)
+	ticker := time.Tick(time.Millisecond * 500)
 
 	start := time.Now()
 	for {
@@ -292,7 +299,7 @@ func GetProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
 			m := Msg{}
 			m.Key = "progress"
 			p := Progress{
-				Pct: strconv.FormatFloat(pct, 'f', 2, 64),
+				Pct: strconv.FormatFloat(pct, 'f', 1, 64),
 				ETA: eta,
 			}
 			m.Value = p
