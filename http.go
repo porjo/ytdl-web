@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -28,6 +29,8 @@ const DefaultExpiry = 7200
 
 // maximum file size to download, in megabytes
 const MaxFileSizeMB = 100
+
+var filenameRegexp = regexp.MustCompile("[^0-9A-Za-z_. -]+")
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -220,8 +223,10 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 				fileSize = f.FileSize
 			}
 		}
-		diskFileName += meta.Title + "." + ext
-		webFileName += meta.Title + "." + ext
+
+		sanitizedTitle := filenameRegexp.ReplaceAllString(meta.Title, "")
+		diskFileName += sanitizedTitle + "." + ext
+		webFileName += sanitizedTitle + "." + ext
 
 		i := Info{Title: meta.Title, FileSize: fileSize}
 		outCh <- Msg{Key: "info", Value: i}
