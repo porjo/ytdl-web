@@ -52,7 +52,10 @@ $(function(){
 					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link':
-					var $link = $("<a>").attr("href", encodeURI(msg.Value.DownloadURL)).text(msg.Value.DownloadURL);
+					var $link = $("<a>")
+						.attr("href", encodeURI(msg.Value.DownloadURL))
+						.attr("target", "_blank")
+						.text(msg.Value.DownloadURL);
 					$("#links").append($link);
 					$("#links").append("<br>");
 					$("#progress-bar > span").css("width", "100%")
