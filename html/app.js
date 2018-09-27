@@ -53,7 +53,8 @@ $(function(){
 					break;
 				case 'link':
 					var $link = $("<a>").attr("href", encodeURI(msg.Value.DownloadURL)).text(msg.Value.DownloadURL);
-					$("#links").append($link + "<br>");
+					$("#links").append($link);
+					$("#links").append("<br>");
 					$("#progress-bar > span").css("width", "100%")
 						.text("100%");
 					$("#go-button").prop('disabled', false);
