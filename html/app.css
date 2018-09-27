@@ -98,15 +98,6 @@ label {
 	text-align: right;
 }
 
-#link {
-	display: none;
-	background-color: #636363;
-	color: #fff;
-	padding: 10px 40px;
-	text-decoration: none;
-	border-radius: 20px;
-}
-
 #progress-bar {
 	margin: 10px 0;
 	height: 20px;  /* Can be anything */

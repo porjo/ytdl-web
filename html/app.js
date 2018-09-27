@@ -16,10 +16,13 @@ $(function(){
 	$("#go-button").click(function() {
 		if (ws.readyState === 1) {
 			$("#output").show();
+			$("#progress-bar > span").css("width", "0%")
+				.text("0%");
 			var url = $("#url").val();
 			var val = {Key: 'url', Value: url};
 			ws.send(JSON.stringify(val));
-			$("#status").append("Requesting URL " + url + "\n");
+			$("#status").append("Requesting URL " + url + "<br>");
+			$(this).prop('disabled', true);
 		} else {
 			$("#status").append("socket not ready\n")
 		}
@@ -49,10 +52,11 @@ $(function(){
 					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link':
-					$("#link").attr('href', encodeURI(msg.Value.DownloadURL))
-						.css('display', 'inline-block');
+					var $link = $("<a>").attr("href", encodeURI(msg.Value.DownloadURL)).text(msg.Value.DownloadURL);
+					$("#links").append($link + "<br>");
 					$("#progress-bar > span").css("width", "100%")
 						.text("100%");
+					$("#go-button").prop('disabled', false);
 					break;
 			}
 		}

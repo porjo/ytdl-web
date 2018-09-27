@@ -119,6 +119,29 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	outCh := make(chan Msg)
+	errCh := make(chan error)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case m, open := <-outCh:
+				if !open {
+					return
+				}
+				err := conn.writeMsg(m)
+				if err != nil {
+					errCh <- err
+				}
+			case err := <-errCh:
+				m := Msg{Key: "error", Value: err.Error()}
+				conn.writeMsg(m)
+				return
+			}
+		}
+	}()
+
 	for {
 		msgType, raw, err := conn.ReadMessage()
 		if err != nil {
@@ -137,33 +160,9 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if msg.Key == "url" {
-				outCh := make(chan Msg)
-				errCh := make(chan error)
-				go func() {
-					err := ws.msgHandler(ctx, outCh, msg)
-					if err != nil {
-						errCh <- err
-					}
-				}()
-
-			loop:
-				for {
-					select {
-					case <-ctx.Done():
-						break loop
-					case m, open := <-outCh:
-						if !open {
-							break loop
-						}
-						err := conn.writeMsg(m)
-						if err != nil {
-							errCh <- err
-						}
-					case err := <-errCh:
-						m := Msg{Key: "error", Value: err.Error()}
-						conn.writeMsg(m)
-						break loop
-					}
+				err := ws.msgHandler(ctx, outCh, msg)
+				if err != nil {
+					errCh <- err
 				}
 			}
 		} else {
@@ -290,6 +289,10 @@ func GetProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
 			return
 		case <-ticker:
 			stats := r.Stats()
+
+			if stats.TotalBytes == 0 {
+				continue
+			}
 
 			pct := float64(stats.ReadBytes) / float64(stats.TotalBytes) * 100
 			if pct == 0 {

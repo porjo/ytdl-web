@@ -85,13 +85,10 @@ func fileCleanup(outPath string, expiry time.Duration) {
 
 	tickChan := time.NewTicker(time.Second * cleanupInterval).C
 
-	for {
-		select {
-		case <-tickChan:
-			err := filepath.Walk(outPath, visit)
-			if err != nil {
-				log.Printf("file cleanup error: %s\n", err)
-			}
+	for _ = range tickChan {
+		err := filepath.Walk(outPath, visit)
+		if err != nil {
+			log.Printf("file cleanup error: %s\n", err)
 		}
 	}
 }
