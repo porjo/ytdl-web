@@ -52,6 +52,11 @@ type Meta struct {
 	Id      string
 	Title   string
 	Formats []MetaFormat
+
+	// fallback fields for non-youtube URLs
+	URL      string
+	Ext      string
+	Filesize int
 }
 
 type MetaFormat struct {
@@ -220,12 +225,20 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		durl := ""
 		fileSize := 0
 		ext := ""
-		for _, f := range meta.Formats {
-			if fileSize == 0 ||
-				(f.FileSize < fileSize && f.FileSize > 0 && f.Vcodec == "none") {
-				durl = f.URL
-				ext = f.Extension
-				fileSize = f.FileSize
+
+		if len(meta.Formats) == 0 && meta.URL != "" {
+			durl = meta.URL
+			fileSize = meta.Filesize
+			ext = meta.Ext
+		} else {
+
+			for _, f := range meta.Formats {
+				if fileSize == 0 ||
+					(f.FileSize < fileSize && f.FileSize > 0 && f.Vcodec == "none") {
+					durl = f.URL
+					ext = f.Extension
+					fileSize = f.FileSize
+				}
 			}
 		}
 
@@ -252,6 +265,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 
 		tCtx, cancel := context.WithTimeout(ctxHandler, ws.Timeout)
 		defer cancel()
+		fmt.Printf("durl %s\n", durl)
 		file, err = r.FetchFile(tCtx, durl, diskFileName)
 		if err != nil {
 			errCh <- err
