@@ -18,6 +18,8 @@ import (
 	"github.com/porjo/braid"
 )
 
+const MaxFileSize = 150e6 // 150 MB
+
 // default process timeout in seconds (if not explicitly set via flag)
 const DefaultProcessTimeout = 300
 const ClientJobs = 5
@@ -220,6 +222,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		err := dec.Decode(&meta)
 		if err != nil {
 			errCh <- err
+			return
 		}
 
 		durl := ""
@@ -242,6 +245,11 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 			}
 		}
 
+		if fileSize > MaxFileSize {
+			errCh <- fmt.Errorf("filesize %d too large", fileSize)
+			return
+		}
+
 		sanitizedTitle := filenameReplacer.Replace(meta.Title)
 		sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
 		sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
@@ -255,6 +263,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		r, err = braid.NewRequest()
 		if err != nil {
 			errCh <- err
+			return
 		}
 		r.SetJobs(ClientJobs)
 		braid.SetLogger(log.Printf)
@@ -269,6 +278,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		file, err = r.FetchFile(tCtx, durl, diskFileName)
 		if err != nil {
 			errCh <- err
+			return
 		}
 		file.Close()
 
