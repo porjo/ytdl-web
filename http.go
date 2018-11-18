@@ -221,7 +221,10 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		dec := json.NewDecoder(rPipe)
 		err := dec.Decode(&meta)
 		if err != nil {
-			errCh <- err
+			rawR := dec.Buffered()
+			rawB := make([]byte, 1000)
+			i, _ := rawR.Read(rawB)
+			errCh <- fmt.Errorf("Error decoding JSON, '%s': %s", err, rawB[:i])
 			return
 		}
 
@@ -292,6 +295,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		log.Printf("Fetching url %s\n", url.String())
 		args := []string{
 			"-j", // write json to stdout only
+			"--no-warnings",
 			url.String(),
 		}
 		err = RunCommandCh(ctxHandler, wPipe, ws.YTCmd, args...)
