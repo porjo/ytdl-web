@@ -1,5 +1,7 @@
 ## ytdl-web
 
+![](https://img.shields.io/docker/automated/porjo/ytdl-web.svg)
+
 Simple web app that takes a Youtube video URL and produces a downloadable audio file.
 
 ![Screenshot](https://porjo.github.io/ytdl-web/screenshot.png)
