@@ -110,13 +110,15 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// setup ping/pong to keep connection open
 	go func() {
-		c := time.Tick(PingInterval)
+		ticker := time.NewTicker(PingInterval)
+		defer ticker.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
 				log.Printf("ping: context done\n")
 				return
-			case <-c:
+			case <-ticker.C:
 				// WriteControl can be called concurrently
 				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WriteWait)); err != nil {
 					log.Printf("WS: ping client, err %s\n", err)
@@ -308,14 +310,15 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 }
 
 func GetProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
-	ticker := time.Tick(time.Millisecond * 500)
+	ticker := time.NewTicker(time.Millisecond * 500)
+	defer ticker.Stop()
 
 	start := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker:
+		case <-ticker.C:
 			stats := r.Stats()
 
 			if stats.TotalBytes == 0 {
