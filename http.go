@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -17,6 +20,9 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/porjo/braid"
 )
+
+// capture progress output e.g '73.2% of 6.25MiB ETA 00:01'
+var ytProgressRe = regexp.MustCompile(`([\d.]+)% of ([\d.]+)(?:.*ETA ([\d:]+))?`)
 
 const MaxFileSize = 150e6 // 150 MB
 
@@ -50,6 +56,11 @@ type Msg struct {
 	Value interface{}
 }
 
+type Request struct {
+	URL          string
+	YTDownloader bool
+}
+
 type Meta struct {
 	Id      string
 	Title   string
@@ -72,6 +83,7 @@ type MetaFormat struct {
 type Info struct {
 	Title       string
 	FileSize    int
+	Extension   string `json:"ext"`
 	DownloadURL string
 }
 
@@ -161,18 +173,16 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Printf("WS: read message %s\n", string(raw))
 
 		if msgType == websocket.TextMessage {
-			var msg Msg
-			err = json.Unmarshal(raw, &msg)
+			var req Request
+			err = json.Unmarshal(raw, &req)
 			if err != nil {
 				log.Printf("json unmarshal error: %s\n", err)
 				return
 			}
 
-			if msg.Key == "url" {
-				err := ws.msgHandler(ctx, outCh, msg)
-				if err != nil {
-					errCh <- err
-				}
+			err := ws.msgHandler(ctx, outCh, req)
+			if err != nil {
+				errCh <- err
 			}
 		} else {
 			log.Printf("unknown message type - close websocket\n")
@@ -196,8 +206,8 @@ func (c *Conn) writeMsg(val interface{}) error {
 	return nil
 }
 
-func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) error {
-	url, err := url.Parse(msg.Value.(string))
+func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Request) error {
+	url, err := url.Parse(req.URL)
 	if err != nil {
 		return err
 	}
@@ -206,11 +216,126 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		return fmt.Errorf("url was empty")
 	}
 
-	ctxHandler, cancel := context.WithCancel(ctx)
-	defer cancel()
-
 	webFileName := ws.OutPath + "/ytdl-"
 	diskFileName := ws.WebRoot + "/" + webFileName
+
+	if req.YTDownloader {
+		err = ws.ytDownload(ctx, outCh, url, webFileName, diskFileName)
+	} else {
+		err = ws.braidDownload(ctx, outCh, url, webFileName, diskFileName)
+	}
+
+	return err
+
+}
+
+func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.URL, webFileName, diskFileName string) error {
+
+	rPipe, wPipe := io.Pipe()
+	defer rPipe.Close()
+
+	errCh := make(chan error)
+
+	// filename is md5 sum of URL
+	urlSum := md5.Sum([]byte(url.String()))
+	tmpFileName := diskFileName + fmt.Sprintf("%x", urlSum)
+
+	go func() {
+		log.Printf("Fetching url %s\n", url.String())
+		args := []string{
+			"--write-info-json",
+			"--max-filesize", fmt.Sprintf("%dm", MaxFileSizeMB),
+			"-f", "worstaudio",
+			// output progress bar as newlines
+			"--newline",
+			// Do not use the Last-modified header to set the file modification time
+			"--no-mtime",
+			"-o", tmpFileName,
+			url.String(),
+		}
+		tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
+		defer cancel()
+		err := RunCommandCh(tCtx, wPipe, ws.YTCmd, args...)
+		if err != nil {
+			errCh <- err
+		}
+	}()
+
+	var info Info
+	count := 0
+	for {
+		count++
+		if count > 20 {
+			errCh <- fmt.Errorf("waited too long for info file")
+			break
+		}
+
+		infoFileName := tmpFileName + ".info.json"
+
+		time.Sleep(500 * time.Millisecond)
+		if _, err := os.Stat(infoFileName); os.IsNotExist(err) {
+			continue
+		}
+		raw, err := ioutil.ReadFile(infoFileName)
+		if err != nil {
+			errCh <- fmt.Errorf("info file read error: %s", err)
+			break
+		}
+
+		err = json.Unmarshal(raw, &info)
+		if err != nil {
+			errCh <- fmt.Errorf("info file json unmarshal error: %s", err)
+			break
+		}
+		m := Msg{Key: "info", Value: info}
+		outCh <- m
+		break
+	}
+
+	stdout := bufio.NewReader(rPipe)
+	for {
+		line, err := stdout.ReadString('\n')
+		if err != nil {
+			if err != io.EOF {
+				return err
+			}
+			sanitizedTitle := filenameReplacer.Replace(info.Title)
+			sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
+			sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
+			webFileName += sanitizedTitle
+
+			finalFileName := diskFileName + sanitizedTitle + "." + info.Extension
+			err = os.Rename(tmpFileName, finalFileName)
+			if err != nil {
+				return err
+			}
+			// if we got here, then command completed successfully
+			info.DownloadURL = webFileName + "." + info.Extension
+			m := Msg{Key: "link", Value: info}
+			outCh <- m
+			break
+		}
+		//fmt.Println(line)
+
+		m := getYTProgress(line)
+		if m != nil {
+			outCh <- *m
+		}
+		select {
+		case err := <-errCh:
+			return err
+		default:
+		}
+	}
+
+	close(outCh)
+	return nil
+}
+
+func (ws *wsHandler) braidDownload(ctx context.Context, outCh chan<- Msg, url *url.URL, webFileName, diskFileName string) error {
+
+	ctxHandler, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	errCh := make(chan error)
 
@@ -273,7 +398,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 		r.SetJobs(ClientJobs)
 		braid.SetLogger(log.Printf)
 		go func() {
-			GetProgress(ctxHandler, outCh, r)
+			getBraidProgress(ctxHandler, outCh, r)
 		}()
 		var file *os.File
 
@@ -300,7 +425,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 			"--no-warnings",
 			url.String(),
 		}
-		err = RunCommandCh(ctxHandler, wPipe, ws.YTCmd, args...)
+		err := RunCommandCh(ctxHandler, wPipe, ws.YTCmd, args...)
 		if err != nil {
 			errCh <- err
 		}
@@ -309,7 +434,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, msg Msg) 
 	return <-errCh
 }
 
-func GetProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
+func getBraidProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
 	ticker := time.NewTicker(time.Millisecond * 500)
 	defer ticker.Stop()
 
@@ -344,4 +469,20 @@ func GetProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
 			outCh <- m
 		}
 	}
+}
+
+func getYTProgress(v string) *Msg {
+	var m *Msg
+	matches := ytProgressRe.FindStringSubmatch(v)
+
+	if len(matches) == 4 {
+		m = new(Msg)
+		m.Key = "progress"
+		p := Progress{
+			Pct: matches[1],
+			ETA: matches[3],
+		}
+		m.Value = p
+	}
+	return m
 }

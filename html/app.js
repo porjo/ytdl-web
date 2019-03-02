@@ -19,7 +19,8 @@ $(function(){
 			$("#progress-bar > span").css("width", "0%")
 				.text("0%");
 			var url = $("#url").val();
-			var val = {Key: 'url', Value: url};
+			var useYTDownloader = $("#native-downloader").is(":checked");
+			var val = {URL: url, YTDownloader: useYTDownloader};
 			ws.send(JSON.stringify(val));
 			$("#status").append("Requesting URL " + url + "<br>");
 			$(this).prop('disabled', true);
