@@ -24,7 +24,8 @@ import (
 // capture progress output e.g '73.2% of 6.25MiB ETA 00:01'
 var ytProgressRe = regexp.MustCompile(`([\d.]+)% of ([\d.]+)(?:.*ETA ([\d:]+))?`)
 
-const MaxFileSize = 150e6 // 150 MB
+//const MaxFileSize = 150e6 // 150 MB
+const MaxFileSize = 170e6 // 150 MB
 
 // default process timeout in seconds (if not explicitly set via flag)
 const DefaultProcessTimeout = 300
@@ -234,6 +235,9 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 	rPipe, wPipe := io.Pipe()
 	defer rPipe.Close()
 
+	tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
+	defer cancel()
+
 	errCh := make(chan error)
 
 	// filename is md5 sum of URL
@@ -253,8 +257,6 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			"-o", tmpFileName,
 			url.String(),
 		}
-		tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
-		defer cancel()
 		err := RunCommandCh(tCtx, wPipe, ws.YTCmd, args...)
 		if err != nil {
 			errCh <- err
@@ -262,38 +264,50 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 	}()
 
 	var info Info
-	count := 0
-	for {
-		count++
-		if count > 20 {
-			errCh <- fmt.Errorf("waited too long for info file")
+	go func() {
+		count := 0
+		for {
+			count++
+			if count > 20 {
+				errCh <- fmt.Errorf("waited too long for info file")
+				break
+			}
+
+			infoFileName := tmpFileName + ".info.json"
+
+			time.Sleep(500 * time.Millisecond)
+			if _, err := os.Stat(infoFileName); os.IsNotExist(err) {
+				continue
+			}
+			raw, err := ioutil.ReadFile(infoFileName)
+			if err != nil {
+				errCh <- fmt.Errorf("info file read error: %s", err)
+				break
+			}
+
+			err = json.Unmarshal(raw, &info)
+			if err != nil {
+				errCh <- fmt.Errorf("info file json unmarshal error: %s", err)
+				break
+			}
+			if info.FileSize > MaxFileSize {
+				errCh <- fmt.Errorf("filesize %d too large", info.FileSize)
+				break
+			}
+			m := Msg{Key: "info", Value: info}
+			outCh <- m
 			break
 		}
-
-		infoFileName := tmpFileName + ".info.json"
-
-		time.Sleep(500 * time.Millisecond)
-		if _, err := os.Stat(infoFileName); os.IsNotExist(err) {
-			continue
-		}
-		raw, err := ioutil.ReadFile(infoFileName)
-		if err != nil {
-			errCh <- fmt.Errorf("info file read error: %s", err)
-			break
-		}
-
-		err = json.Unmarshal(raw, &info)
-		if err != nil {
-			errCh <- fmt.Errorf("info file json unmarshal error: %s", err)
-			break
-		}
-		m := Msg{Key: "info", Value: info}
-		outCh <- m
-		break
-	}
+	}()
 
 	stdout := bufio.NewReader(rPipe)
 	for {
+		select {
+		case err := <-errCh:
+			return err
+		default:
+		}
+
 		line, err := stdout.ReadString('\n')
 		if err != nil {
 			if err != io.EOF {
@@ -320,11 +334,6 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		m := getYTProgress(line)
 		if m != nil {
 			outCh <- *m
-		}
-		select {
-		case err := <-errCh:
-			return err
-		default:
 		}
 	}
 
