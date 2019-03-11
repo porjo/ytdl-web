@@ -73,7 +73,18 @@ label {
 #go-button {
 	width: 200px;
 	height: 50px;
+	background: linear-gradient(to bottom, #e5e5e5 0%,#a4a4a4 100%);
+	font-weight: normal;
+	font-size: 1.2em;
+	color: #505050;
+	text-shadow: 0px 1px 0px #FFF;
+	border-radius: 2px;
+	border: 1px solid #ccc;
+	padding: 4px 12px;
+	margin: 0;
+	cursor: pointer;
 }
+
 #url {
 	height: 50px;
 }
