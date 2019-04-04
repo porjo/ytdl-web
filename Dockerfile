@@ -25,3 +25,4 @@ RUN chmod a+rx /usr/local/bin/youtube-dl
 WORKDIR /app/ytdl-web
 COPY --from=build-env /go/src/github.com/porjo/ytdl-web/ /app/ytdl-web
 ENTRYPOINT ["/app/ytdl-web/ytdl-web", "-cmd", "/usr/local/bin/youtube-dl"]
+
