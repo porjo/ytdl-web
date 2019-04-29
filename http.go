@@ -22,7 +22,7 @@ import (
 )
 
 // capture progress output e.g '73.2% of 6.25MiB ETA 00:01'
-var ytProgressRe = regexp.MustCompile(`([\d.]+)% of ([\d.]+)(?:.*ETA ([\d:]+))?`)
+var ytProgressRe = regexp.MustCompile(`([\d.]+)% of ~?([\d.]+)(?:.*ETA ([\d:]+))?`)
 
 //const MaxFileSize = 150e6 // 150 MB
 const MaxFileSize = 170e6 // 150 MB
