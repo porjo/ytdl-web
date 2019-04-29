@@ -89,8 +89,9 @@ type Info struct {
 }
 
 type Progress struct {
-	Pct string
-	ETA string
+	Pct      string
+	FileSize string
+	ETA      string
 }
 type Conn struct {
 	*websocket.Conn
@@ -488,8 +489,9 @@ func getYTProgress(v string) *Msg {
 		m = new(Msg)
 		m.Key = "progress"
 		p := Progress{
-			Pct: matches[1],
-			ETA: matches[3],
+			Pct:      matches[1],
+			FileSize: matches[2],
+			ETA:      matches[3],
 		}
 		m.Value = p
 	}

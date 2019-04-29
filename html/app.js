@@ -46,6 +46,9 @@ $(function(){
 					$("#progress-bar > span").css("width", pct + "%")
 						.text(pct + "%");
 					$("#eta").text( msg.Value.ETA );
+					if( msg.Value.FileSize !== '' ) {
+						$("#filesize").text( msg.Value.FileSize + " MB" );
+					}
 					break;
 				case 'info':
 					$("#title").text( msg.Value.Title );
