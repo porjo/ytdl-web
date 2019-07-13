@@ -245,7 +245,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		log.Printf("Fetching url %s\n", url.String())
 		args := []string{
 			"--write-info-json",
-			"--max-filesize", fmt.Sprintf("%d", MaxFileSize),
+			"--max-filesize", fmt.Sprintf("%d", int(MaxFileSize)),
 			"-f", "worstaudio",
 			// output progress bar as newlines
 			"--newline",
@@ -254,6 +254,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			"-o", tmpFileName,
 			url.String(),
 		}
+		log.Printf("Running command %v\n", args)
 		err := RunCommandCh(tCtx, wPipe, ws.YTCmd, args...)
 		if err != nil {
 			errCh <- err
