@@ -24,7 +24,6 @@ import (
 // capture progress output e.g '73.2% of 6.25MiB ETA 00:01'
 var ytProgressRe = regexp.MustCompile(`([\d.]+)% of ~?([\d.]+)(?:.*ETA ([\d:]+))?`)
 
-//const MaxFileSize = 150e6 // 150 MB
 const MaxFileSize = 170e6 // 150 MB
 
 // default process timeout in seconds (if not explicitly set via flag)
@@ -36,9 +35,6 @@ const WriteWait = 10 * time.Second
 
 // default content expiry in seconds
 const DefaultExpiry = 7200
-
-// maximum file size to download, in megabytes
-const MaxFileSizeMB = 100
 
 // filename sanitization
 // swap specific characters
@@ -249,7 +245,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		log.Printf("Fetching url %s\n", url.String())
 		args := []string{
 			"--write-info-json",
-			"--max-filesize", fmt.Sprintf("%dm", MaxFileSizeMB),
+			"--max-filesize", fmt.Sprintf("%d", MaxFileSize),
 			"-f", "worstaudio",
 			// output progress bar as newlines
 			"--newline",
