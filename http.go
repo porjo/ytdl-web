@@ -37,8 +37,16 @@ const WriteWait = 10 * time.Second
 const DefaultExpiry = 7200
 
 // filename sanitization
-// swap specific characters
-var filenameReplacer = strings.NewReplacer("(", "_", ")", "_", "&", "+", "'", ",", "—", "-")
+// swap specific special characters
+var filenameReplacer = strings.NewReplacer(
+        " ", "_", "(", "_", ")", "_", "&", "+", "—", "-", "~", ".", "¿", "_", "'", "", "±", "+", "/", ".", "\\", ".", "ß", "ss",
+	"!", "_", "^", "_", "$", "_", "%", "_", "@", "_", "¯", "-", "`", ".", "#", "n", "¡", "_", "ñ", "n", "Ñ", "N",
+        "é", "e", "è", "e", "ê", "e", "ë", "e", "É", "E", "È", "E", "Ê", "E", "Ë", "E",
+        "à", "a", "â", "a", "ä", "a", "á", "a", "À", "A", "Â", "A", "Ä", "A", "Á", "A",
+        "ò", "o", "ô", "o", "ö", "o", "ó", "o", "Ò", "O", "Ô", "O", "Ö", "O", "Ó", "O",
+        "ì", "i", "î", "i", "ï", "i", "í", "i", "Ì", "I", "Î", "I", "Ï", "I", "Í", "I",
+        "ù", "u", "û", "u", "ü", "u", "ú", "u", "Ù", "U", "Û", "U", "Ü", "U", "Ú", "U",
+)
 
 // remove all remaining non-allowed characters
 var filenameRegexp = regexp.MustCompile("[^0-9A-Za-z_. +,-]+")
