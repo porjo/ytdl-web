@@ -13,6 +13,12 @@ var ws = new WebSocket(ws_uri);
 
 $(function(){
 
+	var searchParams = new URLSearchParams(window.location.search);
+	var inputURL = searchParams.get('url');
+	if (inputURL) {
+		$("#url").val(inputURL);
+	}
+
 	$("#go-button").click(function() {
 		if (ws.readyState === 1) {
 			$("#output").show();
