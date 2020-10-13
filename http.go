@@ -41,11 +41,11 @@ const DefaultExpiry = 7200
 var filenameReplacer = strings.NewReplacer(
 	"(", "_", ")", "_", "&", "+", "—", "-", "~", ".", "¿", "_", "'", "", "±", "+", "/", ".", "\\", ".", "ß", "ss",
 	"!", "_", "^", "_", "$", "_", "%", "_", "@", "_", "¯", "-", "`", ".", "#", "", "¡", "_", "ñ", "n", "Ñ", "N",
-        "é", "e", "è", "e", "ê", "e", "ë", "e", "É", "E", "È", "E", "Ê", "E", "Ë", "E",
-        "à", "a", "â", "a", "ä", "a", "á", "a", "À", "A", "Â", "A", "Ä", "A", "Á", "A",
-        "ò", "o", "ô", "o", "ö", "o", "ó", "o", "Ò", "O", "Ô", "O", "Ö", "O", "Ó", "O",
-        "ì", "i", "î", "i", "ï", "i", "í", "i", "Ì", "I", "Î", "I", "Ï", "I", "Í", "I",
-        "ù", "u", "û", "u", "ü", "u", "ú", "u", "Ù", "U", "Û", "U", "Ü", "U", "Ú", "U",
+	"é", "e", "è", "e", "ê", "e", "ë", "e", "É", "E", "È", "E", "Ê", "E", "Ë", "E",
+	"à", "a", "â", "a", "ä", "a", "á", "a", "À", "A", "Â", "A", "Ä", "A", "Á", "A",
+	"ò", "o", "ô", "o", "ö", "o", "ó", "o", "Ò", "O", "Ô", "O", "Ö", "O", "Ó", "O",
+	"ì", "i", "î", "i", "ï", "i", "í", "i", "Ì", "I", "Î", "I", "Ï", "I", "Í", "I",
+	"ù", "u", "û", "u", "ü", "u", "ú", "u", "Ù", "U", "Û", "U", "Ü", "U", "Ú", "U",
 )
 
 // remove all remaining non-allowed characters
@@ -477,8 +477,9 @@ func getBraidProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
 			m := Msg{}
 			m.Key = "progress"
 			p := Progress{
-				Pct: strconv.FormatFloat(pct, 'f', 1, 64),
-				ETA: eta,
+				Pct:      strconv.FormatFloat(pct, 'f', 1, 64),
+				ETA:      eta,
+				FileSize: strconv.FormatFloat(float64(stats.TotalBytes)/1024/1024, 'f', 2, 64),
 			}
 			m.Value = p
 			outCh <- m
