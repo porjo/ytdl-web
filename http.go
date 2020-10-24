@@ -307,6 +307,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 	}()
 
 	stdout := bufio.NewReader(rPipe)
+	lastOut := time.Now()
 	for {
 		select {
 		case err := <-errCh:
@@ -338,8 +339,9 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		//fmt.Println(line)
 
 		m := getYTProgress(line)
-		if m != nil {
+		if m != nil && time.Now().Sub(lastOut) > 500*time.Millisecond {
 			outCh <- *m
+			lastOut = time.Now()
 		}
 	}
 
