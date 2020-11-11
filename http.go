@@ -262,7 +262,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			"-o", tmpFileName,
 			url.String(),
 		}
-		log.Printf("Running command %v\n", args)
+		log.Printf("Running command %v\n", append([]string{ws.YTCmd}, args...))
 		err := RunCommandCh(tCtx, wPipe, ws.YTCmd, args...)
 		if err != nil {
 			errCh <- err
@@ -270,41 +270,39 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 	}()
 
 	var info Info
-	go func() {
-		count := 0
-		for {
-			count++
-			if count > 20 {
-				errCh <- fmt.Errorf("waited too long for info file")
-				break
-			}
-
-			infoFileName := tmpFileName + ".info.json"
-
-			time.Sleep(500 * time.Millisecond)
-			if _, err := os.Stat(infoFileName); os.IsNotExist(err) {
-				continue
-			}
-			raw, err := ioutil.ReadFile(infoFileName)
-			if err != nil {
-				errCh <- fmt.Errorf("info file read error: %s", err)
-				break
-			}
-
-			err = json.Unmarshal(raw, &info)
-			if err != nil {
-				errCh <- fmt.Errorf("info file json unmarshal error: %s", err)
-				break
-			}
-			if info.FileSize > MaxFileSize {
-				errCh <- fmt.Errorf("filesize %d too large", info.FileSize)
-				break
-			}
-			m := Msg{Key: "info", Value: info}
-			outCh <- m
+	count := 0
+	for {
+		count++
+		if count > 20 {
+			errCh <- fmt.Errorf("waited too long for info file")
 			break
 		}
-	}()
+
+		infoFileName := tmpFileName + ".info.json"
+
+		time.Sleep(500 * time.Millisecond)
+		if _, err := os.Stat(infoFileName); os.IsNotExist(err) {
+			continue
+		}
+		raw, err := ioutil.ReadFile(infoFileName)
+		if err != nil {
+			errCh <- fmt.Errorf("info file read error: %s", err)
+			break
+		}
+
+		err = json.Unmarshal(raw, &info)
+		if err != nil {
+			errCh <- fmt.Errorf("info file json unmarshal error: %s", err)
+			break
+		}
+		if info.FileSize > MaxFileSize {
+			errCh <- fmt.Errorf("filesize %d too large", info.FileSize)
+			break
+		}
+		m := Msg{Key: "info", Value: info}
+		outCh <- m
+		break
+	}
 
 	stdout := bufio.NewReader(rPipe)
 	lastOut := time.Now()
@@ -319,6 +317,10 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		if err != nil {
 			if err != io.EOF {
 				return err
+			}
+
+			if info.Title == "" {
+				return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
 			}
 			sanitizedTitle := filenameReplacer.Replace(info.Title)
 			sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
