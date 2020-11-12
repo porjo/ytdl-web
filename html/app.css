@@ -95,6 +95,10 @@ label {
 	display: none;
 }
 
+#spinner {
+	display: none;
+}
+
 #details {
 	text-align: left;
 	border: 1px solid #ddd;

@@ -21,7 +21,8 @@ $(function(){
 
 	$("#go-button").click(function() {
 		if (ws.readyState === 1) {
-			$("#output").show();
+			$("#spinner").show();
+			$("#go-button").hide();
 			$("#progress-bar > span").css("width", "0%")
 				.text("0%");
 			var url = $("#url").val();
@@ -43,6 +44,8 @@ $(function(){
 	ws.onmessage = function (e)	{
 		var msg = JSON.parse(e.data);
 		if( 'Key' in msg ) {
+			$("#spinner").hide();
+			$("#output").show();
 			switch (msg.Key) {
 				case 'error':
 					$("#status").append("Error: " + msg.Value + "\n");

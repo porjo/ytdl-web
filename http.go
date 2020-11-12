@@ -274,8 +274,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 	for {
 		count++
 		if count > 20 {
-			errCh <- fmt.Errorf("waited too long for info file")
-			break
+			return fmt.Errorf("waited too long for info file")
 		}
 
 		infoFileName := tmpFileName + ".info.json"
@@ -286,18 +285,15 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		}
 		raw, err := ioutil.ReadFile(infoFileName)
 		if err != nil {
-			errCh <- fmt.Errorf("info file read error: %s", err)
-			break
+			return fmt.Errorf("info file read error: %s", err)
 		}
 
 		err = json.Unmarshal(raw, &info)
 		if err != nil {
-			errCh <- fmt.Errorf("info file json unmarshal error: %s", err)
-			break
+			return fmt.Errorf("info file json unmarshal error: %s", err)
 		}
 		if info.FileSize > MaxFileSize {
-			errCh <- fmt.Errorf("filesize %d too large", info.FileSize)
-			break
+			return fmt.Errorf("filesize %d too large", info.FileSize)
 		}
 		m := Msg{Key: "info", Value: info}
 		outCh <- m
@@ -423,7 +419,6 @@ func (ws *wsHandler) braidDownload(ctx context.Context, outCh chan<- Msg, url *u
 
 		tCtx, cancel := context.WithTimeout(ctxHandler, ws.Timeout)
 		defer cancel()
-		fmt.Printf("durl %s\n", durl)
 		file, err = r.FetchFile(tCtx, durl, diskFileName)
 		if err != nil {
 			errCh <- err
