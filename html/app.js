@@ -22,7 +22,7 @@ $(function(){
 	$("#go-button").click(function() {
 		if (ws.readyState === 1) {
 			$("#spinner").show();
-			$("#go-button").hide();
+			$("#input-form").hide();
 			$("#progress-bar > span").css("width", "0%")
 				.text("0%");
 			var url = $("#url").val();
