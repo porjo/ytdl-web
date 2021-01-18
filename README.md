@@ -22,16 +22,12 @@ then:
 ### Caddy config
 
 ```
+example.com {
+	encode gzip
 	# Origin and Host header values must match
-	proxy /yt/websocket localhost:8080 {
-		without /yt
-		websocket
-		header_upstream Host {host}
+	reverse_proxy /websocket localhost:8080 {
+		header_up Host {host}
 	}
-
-
-	proxy /yt localhost:8080 {
-		without /yt
-		transparent
-	}
+	reverse_proxy /* localhost:8080
+}
 ```
