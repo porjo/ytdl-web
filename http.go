@@ -28,7 +28,7 @@ const MaxFileSize = 170e6 // 150 MB
 const DefaultProcessTimeout = 300
 const ClientJobs = 5
 
-const PingInterval = 30 * time.Second
+const PingInterval = 10 * time.Second
 const WriteWait = 10 * time.Second
 
 // default content expiry in seconds
