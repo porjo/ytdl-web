@@ -60,7 +60,8 @@ type Msg struct {
 }
 
 type Request struct {
-	URL string
+	URL       string
+	ForceOpus bool
 }
 
 type Meta struct {
@@ -222,13 +223,13 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 	webFileName := ws.OutPath + "/ytdl-"
 	diskFileName := ws.WebRoot + "/" + webFileName
 
-	err = ws.ytDownload(ctx, outCh, url, webFileName, diskFileName)
+	err = ws.ytDownload(ctx, outCh, url, webFileName, diskFileName, req.ForceOpus)
 
 	return err
 
 }
 
-func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.URL, webFileName, diskFileName string) error {
+func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.URL, webFileName, diskFileName string, forceOpus bool) error {
 
 	rPipe, wPipe := io.Pipe()
 	defer rPipe.Close()
@@ -248,14 +249,26 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			"--write-info-json",
 			"--max-filesize", fmt.Sprintf("%d", int(MaxFileSize)),
 			"-f", "worstaudio",
-			"--audio-format", "opus",
 			// output progress bar as newlines
 			"--newline",
 			// Do not use the Last-modified header to set the file modification time
 			"--no-mtime",
-			"-o", tmpFileName,
-			url.String(),
 		}
+
+		if forceOpus {
+			args = append(args, []string{
+				"--audio-format", "opus",
+				"--audio-quality", "32K",
+				"-x",
+				"-o", tmpFileName + ".%(ext)s",
+			}...)
+		} else {
+			args = append(args, []string{
+				"-o", tmpFileName,
+			}...)
+		}
+		args = append(args, url.String())
+
 		log.Printf("Running command %v\n", append([]string{ws.YTCmd}, args...))
 		err := RunCommandCh(tCtx, wPipe, ws.YTCmd, args...)
 		if err != nil {
@@ -318,13 +331,25 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			webFileName += sanitizedTitle
 
 			finalFileName := diskFileName + sanitizedTitle + "." + info.Extension
-			err = os.Rename(tmpFileName, finalFileName)
+			tmpFileName2 := tmpFileName
+			if forceOpus {
+				finalFileName = diskFileName + sanitizedTitle + ".opus"
+				tmpFileName2 = tmpFileName + ".opus"
+			}
+			err = os.Rename(tmpFileName2, finalFileName)
 			if err != nil {
 				return err
 			}
 			// if we got here, then command completed successfully
-			info.DownloadURL = webFileName + "." + info.Extension
-			m := Msg{Key: "link", Value: info}
+			if forceOpus {
+				info.DownloadURL = webFileName + ".opus"
+			} else {
+				info.DownloadURL = webFileName + "." + info.Extension
+
+			}
+			m := Msg{Key: "progress", Value: Progress{Pct: "100"}}
+			outCh <- m
+			m = Msg{Key: "link", Value: info}
 			outCh <- m
 			break
 		}
