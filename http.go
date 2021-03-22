@@ -13,12 +13,10 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/porjo/braid"
 )
 
 // capture progress output e.g '73.2% of 6.25MiB ETA 00:01'
@@ -62,8 +60,7 @@ type Msg struct {
 }
 
 type Request struct {
-	URL          string
-	YTDownloader bool
+	URL string
 }
 
 type Meta struct {
@@ -225,11 +222,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 	webFileName := ws.OutPath + "/ytdl-"
 	diskFileName := ws.WebRoot + "/" + webFileName
 
-	if req.YTDownloader {
-		err = ws.ytDownload(ctx, outCh, url, webFileName, diskFileName)
-	} else {
-		err = ws.braidDownload(ctx, outCh, url, webFileName, diskFileName)
-	}
+	err = ws.ytDownload(ctx, outCh, url, webFileName, diskFileName)
 
 	return err
 
@@ -255,6 +248,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			"--write-info-json",
 			"--max-filesize", fmt.Sprintf("%d", int(MaxFileSize)),
 			"-f", "worstaudio",
+			"--audio-format", "opus",
 			// output progress bar as newlines
 			"--newline",
 			// Do not use the Last-modified header to set the file modification time
@@ -345,145 +339,6 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 
 	close(outCh)
 	return nil
-}
-
-func (ws *wsHandler) braidDownload(ctx context.Context, outCh chan<- Msg, url *url.URL, webFileName, diskFileName string) error {
-
-	ctxHandler, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	errCh := make(chan error)
-
-	var meta Meta
-
-	rPipe, wPipe := io.Pipe()
-	defer rPipe.Close()
-
-	go func() {
-		dec := json.NewDecoder(rPipe)
-		err := dec.Decode(&meta)
-		if err != nil {
-			rawR := dec.Buffered()
-			rawB := make([]byte, 1000)
-			i, _ := rawR.Read(rawB)
-			errCh <- fmt.Errorf("Error decoding JSON, '%s': %s", err, rawB[:i])
-			return
-		}
-
-		durl := ""
-		fileSize := 0
-		ext := ""
-
-		if len(meta.Formats) == 0 && meta.URL != "" {
-			durl = meta.URL
-			fileSize = meta.Filesize
-			ext = meta.Ext
-		} else {
-
-			for _, f := range meta.Formats {
-				if fileSize == 0 ||
-					(f.FileSize < fileSize && f.FileSize > 0 && f.Vcodec == "none") {
-					durl = f.URL
-					ext = f.Extension
-					fileSize = f.FileSize
-				}
-			}
-		}
-
-		if fileSize > MaxFileSize {
-			errCh <- fmt.Errorf("filesize %d too large", fileSize)
-			return
-		}
-
-		sanitizedTitle := filenameReplacer.Replace(meta.Title)
-		sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
-		sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
-		diskFileName += sanitizedTitle + "." + ext
-		webFileName += sanitizedTitle + "." + ext
-
-		i := Info{Title: meta.Title, FileSize: fileSize}
-		outCh <- Msg{Key: "info", Value: i}
-
-		var r *braid.Request
-		r, err = braid.NewRequest()
-		if err != nil {
-			errCh <- err
-			return
-		}
-		r.SetJobs(ClientJobs)
-		braid.SetLogger(log.Printf)
-		go func() {
-			getBraidProgress(ctxHandler, outCh, r)
-		}()
-		var file *os.File
-
-		tCtx, cancel := context.WithTimeout(ctxHandler, ws.Timeout)
-		defer cancel()
-		file, err = r.FetchFile(tCtx, durl, diskFileName)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		file.Close()
-
-		m := Msg{Key: "link", Value: Info{DownloadURL: webFileName}}
-		outCh <- m
-
-		errCh <- nil
-	}()
-
-	go func() {
-		log.Printf("Fetching url %s\n", url.String())
-		args := []string{
-			"-j", // write json to stdout only
-			"--no-warnings",
-			url.String(),
-		}
-		err := RunCommandCh(ctxHandler, wPipe, ws.YTCmd, args...)
-		if err != nil {
-			errCh <- err
-		}
-	}()
-
-	return <-errCh
-}
-
-func getBraidProgress(ctx context.Context, outCh chan<- Msg, r *braid.Request) {
-	ticker := time.NewTicker(time.Millisecond * 500)
-	defer ticker.Stop()
-
-	start := time.Now()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			stats := r.Stats()
-
-			if stats.TotalBytes == 0 {
-				continue
-			}
-
-			pct := float64(stats.ReadBytes) / float64(stats.TotalBytes) * 100
-			if pct == 0 {
-				pct = 0.1
-			}
-			dur := time.Now().Sub(start)
-
-			rem := float64(dur) / pct * (100 - pct)
-			eta := time.Duration(rem).Round(time.Second).String()
-
-			m := Msg{}
-			m.Key = "progress"
-			p := Progress{
-				Pct:      strconv.FormatFloat(pct, 'f', 1, 64),
-				ETA:      eta,
-				FileSize: strconv.FormatFloat(float64(stats.TotalBytes)/1024/1024, 'f', 2, 64),
-			}
-			m.Value = p
-			outCh <- m
-		}
-	}
 }
 
 func getYTProgress(v string) *Msg {
