@@ -10,6 +10,8 @@ var path = loc.pathname.replace(/\/$/, '');
 ws_uri += path + "/websocket";
 
 var ws = new WebSocket(ws_uri);
+var progTimer = null;
+var progLast = null;
 
 $(function(){
 
@@ -26,10 +28,10 @@ $(function(){
 			$("#progress-bar > span").css("width", "0%")
 				.text("0%");
 			var url = $("#url").val();
-			var useYTDownloader = $("#native-downloader").is(":checked");
-			var val = {URL: url, YTDownloader: useYTDownloader};
+			var forceOpus = $("#force-opus").is(":checked");
+			var val = {URL: url, ForceOpus: forceOpus};
 			ws.send(JSON.stringify(val));
-			$("#status").append("Requesting URL " + url + "<br>");
+			$("#status").append("Requesting URL " + url + "\n\n");
 			$(this).prop('disabled', true);
 		} else {
 			$("#status").append("socket not ready\n")
@@ -44,13 +46,27 @@ $(function(){
 	ws.onmessage = function (e)	{
 		var msg = JSON.parse(e.data);
 		if( 'Key' in msg ) {
-			$("#spinner").hide();
 			$("#output").show();
 			switch (msg.Key) {
 				case 'error':
 					$("#status").append("Error: " + msg.Value + "\n");
 					break;
+				case 'unknown':
+					$("#status").append(msg.Value);
+					break;
 				case 'progress':
+					$("#spinner").hide();
+					$("#progress-bar").show();
+					progLast = Date.now();
+					if(!progTimer) {
+						progTimer = setInterval(() => {
+							let now = Date.now();
+							if( (now - progLast) > 4000) {
+								$("#spinner").show();
+								$("#progress-bar").hide();
+							}
+						},1000);
+					}
 					var pct = parseFloat(msg.Value.Pct);
 					$("#progress-bar > span").css("width", pct + "%")
 						.text(pct + "%");
@@ -65,6 +81,8 @@ $(function(){
 					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link':
+					clearTimeout(progTimer);
+					$("#spinner").hide();
 					var $link = $("<a>")
 						.attr("href", encodeURI(msg.Value.DownloadURL))
 						.attr("target", "_blank")
@@ -81,6 +99,7 @@ $(function(){
 
 	ws.onclose = function()	{
 			$("#status").append("Connection closed\n");
+			console.log("Connection closed");
 	};
 
 });

@@ -18,7 +18,7 @@ FROM alpine
 
 RUN apk update && apk upgrade
 
-RUN apk --update add --no-cache ca-certificates curl python2
+RUN apk --update add --no-cache ca-certificates curl python2 ffmpeg
 RUN curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl
 RUN chmod a+rx /usr/local/bin/youtube-dl
 

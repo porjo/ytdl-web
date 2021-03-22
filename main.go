@@ -40,7 +40,10 @@ func main() {
 
 	changeHeaderThenServe := func(h http.Handler) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasSuffix(r.URL.Path, ".webm") || strings.HasSuffix(r.URL.Path, ".m4a") || strings.HasSuffix(r.URL.Path, ".mp3") {
+			if strings.HasSuffix(r.URL.Path, ".webm") ||
+				strings.HasSuffix(r.URL.Path, ".m4a") ||
+				strings.HasSuffix(r.URL.Path, ".opus") ||
+				strings.HasSuffix(r.URL.Path, ".mp3") {
 				w.Header().Add("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", path.Base(r.URL.Path)))
 			}
 			h.ServeHTTP(w, r)
