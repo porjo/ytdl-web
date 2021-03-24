@@ -10,6 +10,8 @@ var path = loc.pathname.replace(/\/$/, '');
 ws_uri += path + "/websocket";
 
 var ws = new WebSocket(ws_uri);
+var progTimer = null;
+var progLast = null;
 
 $(function(){
 
@@ -43,8 +45,6 @@ $(function(){
 
 	ws.onmessage = function (e)	{
 		var msg = JSON.parse(e.data);
-		var progTimer = null;
-		var progLast = null;
 		if( 'Key' in msg ) {
 			$("#output").show();
 			switch (msg.Key) {
@@ -56,7 +56,7 @@ $(function(){
 					$("#progress-bar").show();
 					progLast = Date.now();
 					if(!progTimer) {
-						progTimer = setInterval(function() {
+						progTimer = setInterval(() => {
 							let now = Date.now();
 							if( (now - progLast) > 4000) {
 								$("#spinner").show();

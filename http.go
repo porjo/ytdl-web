@@ -29,7 +29,7 @@ const DefaultProcessTimeout = 300
 const ClientJobs = 5
 
 const PingInterval = 10 * time.Second
-const WriteWait = 10 * time.Second
+const WriteWait = 2 * time.Second
 
 // default content expiry in seconds
 const DefaultExpiry = 7200
@@ -100,10 +100,11 @@ type Conn struct {
 }
 
 type wsHandler struct {
-	Timeout time.Duration
-	WebRoot string
-	YTCmd   string
-	OutPath string
+	Timeout    time.Duration
+	WebRoot    string
+	YTCmd      string
+	OutPath    string
+	RemoteAddr string
 }
 
 func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -119,13 +120,14 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	log.Printf("Client connected %s\n", gconn.RemoteAddr())
+	ws.RemoteAddr = gconn.RemoteAddr().String()
+	log.Printf("WS %s: Client connected\n", ws.RemoteAddr)
 
 	// wrap Gorilla conn with our conn so we can extend functionality
 	conn := Conn{gconn}
 
 	// setup ping/pong to keep connection open
-	go func() {
+	go func(remoteAddr string) {
 		ticker := time.NewTicker(PingInterval)
 		defer ticker.Stop()
 
@@ -137,12 +139,13 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			case <-ticker.C:
 				// WriteControl can be called concurrently
 				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WriteWait)); err != nil {
-					log.Printf("WS: ping client, err %s\n", err)
+					log.Printf("WS %s: ping client, err %s\n", remoteAddr, err)
+					cancel()
 					return
 				}
 			}
 		}
-	}()
+	}(ws.RemoteAddr)
 
 	outCh := make(chan Msg)
 	errCh := make(chan error)
@@ -170,11 +173,11 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		msgType, raw, err := conn.ReadMessage()
 		if err != nil {
-			log.Printf("WS: ReadMessage err %s\n", err)
+			log.Printf("WS %s: ReadMessage err %s\n", ws.RemoteAddr, err)
 			return
 		}
 
-		log.Printf("WS: read message %s\n", string(raw))
+		log.Printf("WS %s: read message %s\n", ws.RemoteAddr, string(raw))
 
 		if msgType == websocket.TextMessage {
 			var req Request
@@ -186,6 +189,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			err := ws.msgHandler(ctx, outCh, req)
 			if err != nil {
+				fmt.Printf("msghandler err %s", err)
 				errCh <- err
 			}
 		} else {
@@ -193,8 +197,9 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			conn.Close()
 			return
 		}
-		log.Printf("WS end main loop\n")
+		log.Printf("WS %s: end main loop\n", ws.RemoteAddr)
 	}
+	log.Printf("WS %s: end ServeHTTP\n", ws.RemoteAddr)
 }
 
 func (c *Conn) writeMsg(val interface{}) error {
@@ -202,7 +207,7 @@ func (c *Conn) writeMsg(val interface{}) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("WS: write message %s\n", string(j))
+	log.Printf("WS %s: write message %s\n", c.RemoteAddr(), string(j))
 	if err = c.WriteMessage(websocket.TextMessage, j); err != nil {
 		return err
 	}
@@ -272,6 +277,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		log.Printf("Running command %v\n", append([]string{ws.YTCmd}, args...))
 		err := RunCommandCh(tCtx, wPipe, ws.YTCmd, args...)
 		if err != nil {
+			log.Printf("command err %s", err)
 			errCh <- err
 		}
 	}()
@@ -347,9 +353,9 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 				info.DownloadURL = webFileName + "." + info.Extension
 
 			}
-			m := Msg{Key: "progress", Value: Progress{Pct: "100"}}
-			outCh <- m
-			m = Msg{Key: "link", Value: info}
+			//			m := Msg{Key: "progress", Value: Progress{Pct: "100"}}
+			//			outCh <- m
+			m := Msg{Key: "link", Value: info}
 			outCh <- m
 			break
 		}
