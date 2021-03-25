@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -29,6 +30,11 @@ func main() {
 	log.Printf("Set output path: %s\n", *webRoot+"/"+*outPath)
 	log.Printf("Set content expiry: %d sec\n", *expiry)
 
+	err := mime.AddExtensionType(".opus", "audio/ogg")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	ws := &wsHandler{
 		WebRoot: *webRoot,
 		Timeout: time.Duration(*timeout) * time.Second,
@@ -43,11 +49,10 @@ func main() {
 	go fileCleanup(*webRoot+"/"+*outPath, expiryD)
 
 	log.Printf("Listening on :%d...\n", *port)
-	err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
+	err = http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-
 }
 
 func fileCleanup(outPath string, expiry time.Duration) {
