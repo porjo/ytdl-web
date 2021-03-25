@@ -31,7 +31,7 @@ $(function(){
 			var forceOpus = $("#force-opus").is(":checked");
 			var val = {URL: url, ForceOpus: forceOpus};
 			ws.send(JSON.stringify(val));
-			$("#status").append("Requesting URL " + url + "<br>");
+			$("#status").append("Requesting URL " + url + "\n\n");
 			$(this).prop('disabled', true);
 		} else {
 			$("#status").append("socket not ready\n")
@@ -50,6 +50,9 @@ $(function(){
 			switch (msg.Key) {
 				case 'error':
 					$("#status").append("Error: " + msg.Value + "\n");
+					break;
+				case 'unknown':
+					$("#status").append(msg.Value);
 					break;
 				case 'progress':
 					$("#spinner").hide();
@@ -96,6 +99,7 @@ $(function(){
 
 	ws.onclose = function()	{
 			$("#status").append("Connection closed\n");
+			console.log("Connection closed");
 	};
 
 });

@@ -134,7 +134,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("ping: context done\n")
+				log.Printf("WS %s: ping, context done\n", remoteAddr)
 				return
 			case <-ticker.C:
 				// WriteControl can be called concurrently
@@ -180,18 +180,20 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Printf("WS %s: read message %s\n", ws.RemoteAddr, string(raw))
 
 		if msgType == websocket.TextMessage {
-			var req Request
-			err = json.Unmarshal(raw, &req)
-			if err != nil {
-				log.Printf("json unmarshal error: %s\n", err)
-				return
-			}
+			go func() {
+				var req Request
+				err = json.Unmarshal(raw, &req)
+				if err != nil {
+					log.Printf("json unmarshal error: %s\n", err)
+					return
+				}
 
-			err := ws.msgHandler(ctx, outCh, req)
-			if err != nil {
-				fmt.Printf("msghandler err %s", err)
-				errCh <- err
-			}
+				err := ws.msgHandler(ctx, outCh, req)
+				if err != nil {
+					errCh <- err
+				}
+				return
+			}()
 		} else {
 			log.Printf("unknown message type - close websocket\n")
 			conn.Close()
@@ -362,9 +364,14 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		//fmt.Println(line)
 
 		m := getYTProgress(line)
-		if m != nil && time.Now().Sub(lastOut) > 500*time.Millisecond {
-			outCh <- *m
-			lastOut = time.Now()
+		if m != nil {
+			if time.Now().Sub(lastOut) > 500*time.Millisecond {
+				outCh <- *m
+				lastOut = time.Now()
+			}
+		} else {
+			m := Msg{Key: "unknown", Value: line}
+			outCh <- m
 		}
 	}
 
