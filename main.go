@@ -30,7 +30,7 @@ func main() {
 	log.Printf("Set output path: %s\n", *webRoot+"/"+*outPath)
 	log.Printf("Set content expiry: %d sec\n", *expiry)
 
-	err := mime.AddExtensionType(".opus", "audio/ogg")
+	err := mime.AddExtensionType(".oga", "audio/ogg")
 	if err != nil {
 		log.Fatal(err)
 	}

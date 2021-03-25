@@ -341,7 +341,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			finalFileName := diskFileName + sanitizedTitle + "." + info.Extension
 			tmpFileName2 := tmpFileName
 			if forceOpus {
-				finalFileName = diskFileName + sanitizedTitle + ".opus"
+				finalFileName = diskFileName + sanitizedTitle + ".oga"
 				tmpFileName2 = tmpFileName + ".opus"
 			}
 			err = os.Rename(tmpFileName2, finalFileName)
@@ -350,7 +350,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			}
 			// if we got here, then command completed successfully
 			if forceOpus {
-				info.DownloadURL = webFileName + ".opus"
+				info.DownloadURL = webFileName + ".oga"
 			} else {
 				info.DownloadURL = webFileName + "." + info.Extension
 
