@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -37,20 +36,7 @@ func main() {
 		OutPath: *outPath,
 	}
 	http.Handle("/websocket", ws)
-
-	changeHeaderThenServe := func(h http.Handler) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasSuffix(r.URL.Path, ".webm") ||
-				strings.HasSuffix(r.URL.Path, ".m4a") ||
-				strings.HasSuffix(r.URL.Path, ".opus") ||
-				strings.HasSuffix(r.URL.Path, ".mp3") {
-				w.Header().Add("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", path.Base(r.URL.Path)))
-			}
-			h.ServeHTTP(w, r)
-		}
-	}
-
-	http.Handle("/", changeHeaderThenServe(http.FileServer(http.Dir(*webRoot))))
+	http.Handle("/", http.FileServer(http.Dir(*webRoot)))
 
 	log.Printf("Starting cleanup routine...\n")
 	expiryD := time.Second * time.Duration(*expiry)

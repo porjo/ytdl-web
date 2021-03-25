@@ -31,7 +31,7 @@ $(function(){
 			var forceOpus = $("#force-opus").is(":checked");
 			var val = {URL: url, ForceOpus: forceOpus};
 			ws.send(JSON.stringify(val));
-			$("#status").append("Requesting URL " + url + "\n\n");
+			$("#status").append("Requesting URL " + url + "\n");
 			$(this).prop('disabled', true);
 		} else {
 			$("#status").append("socket not ready\n")
@@ -52,7 +52,7 @@ $(function(){
 					$("#status").append("Error: " + msg.Value + "\n");
 					break;
 				case 'unknown':
-					$("#status").append(msg.Value);
+					$("#status").prepend(msg.Value);
 					break;
 				case 'progress':
 					$("#spinner").hide();
@@ -85,7 +85,7 @@ $(function(){
 					$("#spinner").hide();
 					var $link = $("<a>")
 						.attr("href", encodeURI(msg.Value.DownloadURL))
-						.attr("target", "_blank")
+						.attr("download", "")
 						.text(msg.Value.DownloadURL);
 					$("#links").append($link);
 					$("#links").append("<br>");
