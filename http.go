@@ -343,6 +343,16 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			if forceOpus {
 				finalFileName = diskFileName + sanitizedTitle + ".oga"
 				tmpFileName2 = tmpFileName + ".opus"
+
+				fi, err := os.Stat(tmpFileName2)
+				if err != nil {
+					return err
+				}
+				m := Msg{
+					Key:   "unknown",
+					Value: fmt.Sprintf("opus file size %.2f MB\n", float32(fi.Size())*1e-6),
+				}
+				outCh <- m
 			}
 			err = os.Rename(tmpFileName2, finalFileName)
 			if err != nil {
