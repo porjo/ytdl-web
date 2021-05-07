@@ -9,11 +9,11 @@ ws_uri += "//" + loc.host;
 var path = loc.pathname.replace(/\/$/, '');
 ws_uri += path + "/websocket";
 
-var ws = new WebSocket(ws_uri);
 var progTimer = null;
 var progLast = null;
 
 $(function(){
+	var ws = new WebSocket(ws_uri);
 
 	var searchParams = new URLSearchParams(window.location.search);
 	var inputURL = searchParams.get('url');
@@ -49,6 +49,7 @@ $(function(){
 			$("#output").show();
 			switch (msg.Key) {
 				case 'error':
+					$("#spinner").hide();
 					$("#status").append("Error: " + msg.Value + "\n");
 					break;
 				case 'unknown':
@@ -98,8 +99,14 @@ $(function(){
 	};
 
 	ws.onclose = function()	{
-			$("#status").append("Connection closed\n");
-			console.log("Connection closed");
+		$("#status").append("Connection closed\n");
+		console.log("Connection closed");
+		$("#ws-status-light").toggleClass("on off");
 	};
 
+	ws.onopen = function(e) {
+		$("#status").append("Connection opened\n");
+		console.log("Connection opened");
+		$("#ws-status-light").toggleClass("off on");
+	}
 });
