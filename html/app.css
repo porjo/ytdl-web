@@ -182,13 +182,11 @@ label {
 
 #ws-status-light.off {
 	background-color: rgb(226,0,0);
-	box-shadow: inset 0px 1px 0px 0px rgba(250,250,250,0.5), 0px 0px 1px 1px rgba(226,0,0,0.5);
 	transform: scale(1);
 }
 
 #ws-status-light.on {
 	background-color: rgb(0, 183, 20);
-	box-shadow: inset 0px 1px 0px 0px rgba(250,250,250,0.5), 0px 0px 1px 1px rgba(0, 255, 40, 0.5);
 	animation-name: pulse;
 	animation-duration: 2s;
 	animation-fill-mode: both;
@@ -197,9 +195,12 @@ label {
 }
 
 @keyframes pulse {
-	0% { transform: scale(1); }
-	50% { transform: scale(1.5); }
-	100% { transform: scale(1); }
+	0% { background-color: rgba(0, 183, 20, 1); }
+	50% {
+		background-color: rgba(0, 255, 20,0);
+		box-shadow: inset 0px 1px 0px 0px rgba(250,250,250,0.5), 0px 0px 1px 1px rgba(0, 255, 40, 0.5);
+	}
+	100% { background-color: rgba(0, 183, 20, 1); }
 }
 
 .switch {
