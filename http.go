@@ -315,6 +315,28 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		break
 	}
 
+	// output size of opus file as it gets written
+	if forceOpus {
+		go func() {
+			for {
+				select {
+				case <-tCtx.Done():
+					return
+				default:
+				}
+				fi, err := os.Stat(tmpFileName + ".opus")
+				if err == nil {
+					m := Msg{
+						Key:   "unknown",
+						Value: fmt.Sprintf("opus file size %.2f MB\n", float32(fi.Size())*1e-6),
+					}
+					outCh <- m
+				}
+				time.Sleep(3 * time.Second)
+			}
+		}()
+	}
+
 	stdout := bufio.NewReader(rPipe)
 	lastOut := time.Now()
 	for {
