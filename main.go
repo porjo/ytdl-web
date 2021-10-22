@@ -16,7 +16,7 @@ const cleanupInterval = 30 // seconds
 
 func main() {
 
-	ytCmd := flag.String("cmd", "/usr/bin/youtube-dl", "path to youtube-dl")
+	ytCmd := flag.String("cmd", "/usr/bin/yt-dlp", "path to yt-dlp")
 	webRoot := flag.String("webRoot", "html", "web root directory")
 	outPath := flag.String("outPath", "dl", "where to store downloaded files (relative to web root)")
 	timeout := flag.Int("timeout", DefaultProcessTimeout, "process timeout (seconds)")

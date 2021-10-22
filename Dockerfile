@@ -18,12 +18,12 @@ FROM alpine
 
 RUN apk update && apk upgrade
 
-RUN apk --update add --no-cache ca-certificates curl python2 ffmpeg
-RUN curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl
-RUN chmod a+rx /usr/local/bin/youtube-dl
+RUN apk --update add --no-cache ca-certificates curl python3 ffmpeg
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+RUN chmod a+rx /usr/local/bin/yt-dlp
 
-# Update youtube-dl once a week
-RUN echo '0 0 * * * /usr/local/bin/youtube-dl -U' >> /etc/crontabs/root
+# Update yt-dlp once a week
+RUN echo '0 0 * * * /usr/local/bin/yt-dlp -U' >> /etc/crontabs/root
 
 WORKDIR /app/ytdl-web
 COPY --from=build-env /go/src/github.com/porjo/ytdl-web/ /app/ytdl-web
