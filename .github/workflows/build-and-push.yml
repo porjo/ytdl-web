@@ -35,15 +35,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GHCR_PAT }}
       
-      - name: Build image and push to Docker Hub and GitHub Container Registry
+      - name: Build image and push to GitHub Container Registry
         id: docker_build
         uses: docker/build-push-action@v2
         with:
+          context: .
+          platforms: linux/amd64
           # Note: tags has to be all lower-case
           tags: |
             ghcr.io/porjo/ytdl-web:latest
           # build on feature branches, push only on main branch
-          push: ${{ github.ref == 'refs/heads/main' }}
+          push: ${{ github.ref == 'refs/heads/master' }}
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
