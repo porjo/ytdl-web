@@ -1,6 +1,6 @@
 ## ytdl-web
 
-[![](https://img.shields.io/docker/automated/porjo/ytdl-web.svg)](https://hub.docker.com/r/porjo/ytdl-web)
+[![](https://img.shields.io/docker/automated/porjo/ytdl-web.svg)](https://github.com/users/porjo/packages/container/package/ytdl-web)
 
 Simple web app that takes a Youtube video URL and produces a downloadable audio file.
 
@@ -8,9 +8,9 @@ Simple web app that takes a Youtube video URL and produces a downloadable audio 
 
 ### Install
 
-Use prebuilt Docker image from Docker hub:
+Use prebuilt Docker image from container registry:
 ```
-$ docker pull porjo/ytdl-web
+$ docker pull ghcr.io/porjo/ytdl-web:latest
 ```
 
 or clone this Github repo and run `docker build` on it.
@@ -31,4 +31,3 @@ example.com {
 	reverse_proxy /* localhost:8080
 }
 ```
-
