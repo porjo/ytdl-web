@@ -36,6 +36,7 @@ jobs:
           password: ${{ secrets.GHCR_PAT }}
       
       - name: Build image and push to Docker Hub and GitHub Container Registry
+        id: docker_build
         uses: docker/build-push-action@v2
         with:
           # Note: tags has to be all lower-case
