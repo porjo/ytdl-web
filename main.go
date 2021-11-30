@@ -17,6 +17,8 @@ const cleanupInterval = 30 // seconds
 func main() {
 
 	ytCmd := flag.String("cmd", "/usr/bin/yt-dlp", "path to yt-dlp")
+	sponsorBlock := flag.Bool("sponsorBlock", false, "enable SponsorBlock ad removal")
+	sponsorBlockCats := flag.String("sponsorBlockCategories", "sponsor", "set SponsorBlock categories (comma separated)")
 	webRoot := flag.String("webRoot", "html", "web root directory")
 	outPath := flag.String("outPath", "dl", "where to store downloaded files (relative to web root)")
 	timeout := flag.Int("timeout", DefaultProcessTimeout, "process timeout (seconds)")
@@ -36,10 +38,12 @@ func main() {
 	}
 
 	ws := &wsHandler{
-		WebRoot: *webRoot,
-		Timeout: time.Duration(*timeout) * time.Second,
-		YTCmd:   *ytCmd,
-		OutPath: *outPath,
+		WebRoot:          *webRoot,
+		Timeout:          time.Duration(*timeout) * time.Second,
+		YTCmd:            *ytCmd,
+		SponsorBlock:     *sponsorBlock,
+		SponsorBlockCats: *sponsorBlockCats,
+		OutPath:          *outPath,
 	}
 	http.Handle("/websocket", ws)
 	http.Handle("/", http.FileServer(http.Dir(*webRoot)))

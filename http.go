@@ -100,11 +100,13 @@ type Conn struct {
 }
 
 type wsHandler struct {
-	Timeout    time.Duration
-	WebRoot    string
-	YTCmd      string
-	OutPath    string
-	RemoteAddr string
+	Timeout          time.Duration
+	WebRoot          string
+	YTCmd            string
+	SponsorBlock     bool
+	SponsorBlockCats string
+	OutPath          string
+	RemoteAddr       string
 }
 
 func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -262,18 +264,21 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			"--no-mtime",
 		}
 
+		if ws.SponsorBlock {
+			args = append(args, []string{
+				"--sponsorblock-remove", ws.SponsorBlockCats,
+			}...)
+		}
 		if forceOpus {
 			args = append(args, []string{
 				"--audio-format", "opus",
 				"--audio-quality", "32K",
 				"-x",
-				"-o", tmpFileName + ".%(ext)s",
-			}...)
-		} else {
-			args = append(args, []string{
-				"-o", tmpFileName,
 			}...)
 		}
+		args = append(args, []string{
+			"-o", tmpFileName + ".%(ext)s",
+		}...)
 		args = append(args, url.String())
 
 		log.Printf("Running command %v\n", append([]string{ws.YTCmd}, args...))
@@ -361,7 +366,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			webFileName += sanitizedTitle
 
 			finalFileName := diskFileName + sanitizedTitle + "." + info.Extension
-			tmpFileName2 := tmpFileName
+			tmpFileName2 := tmpFileName + "." + info.Extension
 			if forceOpus {
 				finalFileName = diskFileName + sanitizedTitle + ".oga"
 				tmpFileName2 = tmpFileName + ".opus"

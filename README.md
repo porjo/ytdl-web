@@ -6,6 +6,32 @@ Simple web app that takes a Youtube video URL and produces a downloadable audio 
 
 ![Screenshot](https://porjo.github.io/ytdl-web/screenshot.png)
 
+Supports [SponsorBlock](https://github.com/ajayyy/SponsorBlock) for removing sponsor segments in a video. Just add the `-sponsorBlock` command parameter.
+
+### Usage
+
+All command line parameters are optional.
+
+```
+Usage of ./ytdl-web:
+  -cmd string
+    	path to yt-dlp (default "/usr/bin/yt-dlp")
+  -expiry int
+    	expire downloaded content (seconds) (default 7200)
+  -outPath string
+    	where to store downloaded files (relative to web root) (default "dl")
+  -port int
+    	listen on this port (default 8080)
+  -sponsorBlock
+    	enable SponsorBlock ad removal
+  -sponsorBlockCategories string
+    	set SponsorBlock categories (comma separated) (default "sponsor")
+  -timeout int
+    	process timeout (seconds) (default 300)
+  -webRoot string
+    	web root directory (default "html")
+```
+
 ### Install
 
 Use prebuilt Docker image from container registry:
