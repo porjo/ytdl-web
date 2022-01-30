@@ -6,7 +6,7 @@ Simple web app that takes a Youtube video URL and produces a downloadable audio 
 
 ![Screenshot](https://porjo.github.io/ytdl-web/screenshot.png)
 
-Supports [SponsorBlock](https://github.com/ajayyy/SponsorBlock) for removing sponsor segments in a video. Just add the `-sponsorBlock` command parameter.
+Supports [SponsorBlock](https://github.com/ajayyy/SponsorBlock) for removing sponsor segments in a video. Just add the `-sponsorBlock` command parameter. See [yt-dlp doco](https://github.com/yt-dlp/yt-dlp#sponsorblock-options) for more details.
 
 ### Usage
 

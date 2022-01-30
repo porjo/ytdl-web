@@ -2,4 +2,4 @@
 
 crond
 
-/app/ytdl-web/ytdl-web -cmd /usr/local/bin/yt-dlp -sponsorBlock
+exec /app/ytdl-web/ytdl-web "$@"
