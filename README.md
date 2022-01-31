@@ -36,7 +36,7 @@ Usage of ./ytdl-web:
 
 Use prebuilt Docker image from container registry:
 ```
-$ docker run -it -p 8080:8080 ghcr.io/porjo/ytdl-web:latest
+$ docker run -it -p 8080:8080 ghcr.io/porjo/ytdl-web
 ```
 
 or clone this Github repo and run `docker build` on it.
