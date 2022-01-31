@@ -6,7 +6,7 @@ Simple web app that takes a Youtube video URL and produces a downloadable audio 
 
 ![Screenshot](https://porjo.github.io/ytdl-web/screenshot.png)
 
-Supports [SponsorBlock](https://github.com/ajayyy/SponsorBlock) for removing sponsor segments in a video. Just add the `-sponsorBlock` command parameter.
+Supports [SponsorBlock](https://github.com/ajayyy/SponsorBlock) for removing sponsor segments in a video. Just add the `-sponsorBlock` command parameter. See [yt-dlp doco](https://github.com/yt-dlp/yt-dlp#sponsorblock-options) for more details.
 
 ### Usage
 
@@ -36,14 +36,13 @@ Usage of ./ytdl-web:
 
 Use prebuilt Docker image from container registry:
 ```
-$ docker pull ghcr.io/porjo/ytdl-web:latest
+$ docker run -it -p 8080:8080 ghcr.io/porjo/ytdl-web:latest
 ```
 
 or clone this Github repo and run `docker build` on it.
 
 then:
 - (optionally) configure [Caddy](https://caddyserver.com) proxy (see config below)
-- run Docker container: `docker run -it -p 8080:8080 ytdl-web`
 
 ### Caddy config
 
