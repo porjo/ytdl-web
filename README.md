@@ -8,6 +8,8 @@ Simple web app that takes a Youtube video URL (or any URL supported by [yt-dlp](
 
 Supports [SponsorBlock](https://github.com/ajayyy/SponsorBlock) for removing sponsor segments in a video. Just add the `-sponsorBlock` command parameter. See [yt-dlp doco](https://github.com/yt-dlp/yt-dlp#sponsorblock-options) for more details.
 
+By default, the audio codec will be whatever codec is used in the video container (typically AAC). The 'Opus Audio' toggle switch will force the audio to be encoded with Opus for smaller file size.
+
 ### Usage
 
 All command line parameters are optional.
