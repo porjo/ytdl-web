@@ -2,7 +2,7 @@
 
 [![](https://img.shields.io/docker/automated/porjo/ytdl-web.svg)](https://github.com/users/porjo/packages/container/package/ytdl-web)
 
-Simple web app that takes a Youtube video URL and produces a downloadable audio file.
+Simple web app that takes a Youtube video URL (or any URL supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp) and produces a downloadable audio file.
 
 ![Screenshot](https://porjo.github.io/ytdl-web/screenshot.png)
 
