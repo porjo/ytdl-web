@@ -194,6 +194,11 @@ label {
 	animation-timing-function: ease;
 }
 
+#recent {
+	display: none;
+	text-align: left;
+}
+
 @keyframes pulse {
 	0% { background-color: rgba(0, 183, 20, 1); }
 	50% {

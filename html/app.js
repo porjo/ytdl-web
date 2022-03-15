@@ -46,16 +46,18 @@ $(function(){
 	ws.onmessage = function (e)	{
 		var msg = JSON.parse(e.data);
 		if( 'Key' in msg ) {
-			$("#output").show();
 			switch (msg.Key) {
 				case 'error':
+					$("#output").show();
 					$("#spinner").hide();
 					$("#status").append("Error: " + msg.Value + "\n");
 					break;
 				case 'unknown':
+					$("#output").show();
 					$("#status").prepend(msg.Value);
 					break;
 				case 'progress':
+					$("#output").show();
 					$("#spinner").hide();
 					$("#progress-bar").show();
 					progLast = Date.now();
@@ -77,11 +79,13 @@ $(function(){
 					}
 					break;
 				case 'info':
+					$("#output").show();
 					$("#title").text( msg.Value.Title );
 					var bytes = parseFloat(msg.Value.FileSize)
 					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link':
+					$("#output").show();
 					clearTimeout(progTimer);
 					$("#spinner").hide();
 					var $link = $("<a>")
@@ -93,6 +97,22 @@ $(function(){
 					$("#progress-bar > span").css("width", "100%")
 						.text("100%");
 					$("#go-button").prop('disabled', false);
+					break;
+				case 'recent':
+					if( msg.Value.length == 0 ) {
+						break;
+					}
+					$("#recent").show();
+					$("#recent_urls").empty();
+					for (let i=0; i< msg.Value.length; i++) {
+						var $link = $("<a>")
+							.attr("href", encodeURI(msg.Value[i].URL))
+							.attr("download", "")
+							.text(msg.Value[i].URL);
+							//.text(msg.Value[i].URL + " " + new Date(msg.Value[i].Timestamp).toString());
+						$("#recent_urls").append($link);
+						$("#recent_urls").append("<br>");
+					}
 					break;
 			}
 		}
