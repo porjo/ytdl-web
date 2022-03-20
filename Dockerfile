@@ -8,9 +8,6 @@ RUN apk update && \
     apk upgrade && \
 	apk add git
 
-RUN go get github.com/gorilla/websocket
-RUN go get github.com/porjo/braid
-
 RUN go build -o ytdl-web
 
 # Final stage
