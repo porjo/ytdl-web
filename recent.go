@@ -1,6 +1,8 @@
 package main
 
 import (
+	"io/ioutil"
+	"strings"
 	"time"
 )
 
@@ -9,26 +11,20 @@ type recent struct {
 	Timestamp time.Time
 }
 
-var recentURLs = make([]recent, 0)
+func GetRecentURLs(webRoot, outPath string) ([]recent, error) {
+	recentURLs := make([]recent, 0)
 
-func GetRecentURLs() []recent {
-	return recentURLs
-}
+	files, err := ioutil.ReadDir(webRoot + "/" + outPath)
+	if err != nil {
+		return nil, err
+	}
 
-func AddRecentURL(u string) error {
-	for _, v := range recentURLs {
-		if v.URL == u {
-			return nil
+	for _, file := range files {
+		if !file.IsDir() && file.Name() != ".README" && !strings.HasSuffix(file.Name(), ".json") {
+			r := recent{URL: outPath + "/" + file.Name(), Timestamp: file.ModTime()}
+			recentURLs = append(recentURLs, r)
 		}
 	}
-	r := recent{URL: u, Timestamp: time.Now()}
-	recentURLs = append(recentURLs, r)
 
-	if len(recentURLs) > recentURLsCount {
-		_ = recentURLs[0]
-		// Discard top element
-		recentURLs = recentURLs[1:]
-	}
-
-	return nil
+	return recentURLs, nil
 }

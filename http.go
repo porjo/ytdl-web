@@ -173,8 +173,13 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	for {
-		// Send recently downloaded URLs
-		m := Msg{Key: "recent", Value: GetRecentURLs()}
+		// Send recently retrieved URLs
+		recentURLs, err := GetRecentURLs(ws.WebRoot, ws.OutPath)
+		if err != nil {
+			log.Printf("WS %s: GetRecentURLS err %s\n", ws.RemoteAddr, err)
+			return
+		}
+		m := Msg{Key: "recent", Value: recentURLs}
 		conn.writeMsg(m)
 
 		msgType, raw, err := conn.ReadMessage()
@@ -395,11 +400,6 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			} else {
 				info.DownloadURL = webFileName + "." + info.Extension
 
-			}
-			// Update recently downloaded list
-			err := AddRecentURL(info.DownloadURL)
-			if err != nil {
-				return err
 			}
 
 			m := Msg{Key: "link", Value: info}

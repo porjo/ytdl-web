@@ -15,8 +15,8 @@
 		<div class="container">
 			<h1>Youtube Video to Audio Converter</h1>
 			<div id='input-form'>
-				<input type='text' size=50 id='url' placeholder='Enter URL here...' autocomplete="off">
-				<h2>Opus audio</h2>
+				<input type='text' id='url' placeholder='Enter URL here...' autocomplete="off">
+				<label for='go-button'>Opus audio</label>
 				<label class="switch">
 					<input class="switch-input" id="force-opus" type="checkbox" />
 					<span class="switch-label" data-on="On" data-off="Off"></span>
@@ -43,8 +43,9 @@
 			</div>
 			<div id='ws-status-light' class='off'></div>
 			<div id='recent'>
-				<h3>Recent URLs</h3>
-				<div id='recent_urls'></div>
+				<h3>Recent Downloads</h3>
+				<div id='recent_urls'>
+				</div>
 			</div>
 			<div id='footer'>
 				<a href='https://github.com/porjo/ytdl-web'>Github Project</a>
