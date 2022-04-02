@@ -38,6 +38,11 @@ $(function(){
 		}
 	});
 
+	$("#searchbox span").click(function() {
+		$("#url").val('');
+	});
+
+
 	/*
 	ws.onopen = function() {
 	};

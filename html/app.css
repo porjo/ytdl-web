@@ -66,11 +66,15 @@ h3 {
 
 input[type="text"] {
 	width: 100%;
-	margin: 0 0 10px 0;
+	margin: 10px 0;
 	padding: 0 10px;
 	box-sizing: border-box;
 	-moz-box-sizing: border-box;
 	-webkit-box-sizing: border-box;
+}
+
+#input-form {
+        margin: 0 10px;
 }
 
 #status {
@@ -362,3 +366,27 @@ label {
 	-moz-transition: All 0.3s ease;
 	-o-transition: All 0.3s ease;
 }
+
+#searchbox {
+        position: relative;
+}
+#searchbox span {
+        position: absolute;
+        display: block;
+        right: 3px;
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        color: #fff;
+        background-color: #ccc;
+        font: 13px monospace;
+        text-align: center;
+        line-height: 1em;
+        cursor: pointer;
+        top: calc(50% - 7px);
+}
+#searchbox input {
+        padding-right: 18px;
+        box-sizing: border-box;
+}
+
