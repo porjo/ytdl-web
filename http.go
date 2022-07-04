@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -48,6 +49,7 @@ var filenameReplacer = strings.NewReplacer(
 
 // remove all remaining non-allowed characters
 var filenameRegexp = regexp.MustCompile("[^0-9A-Za-z_. +,-]+")
+var badTitleRegexp = regexp.MustCompile("[0-9A-Fa-f_-]+")
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -62,6 +64,15 @@ type Msg struct {
 type Request struct {
 	URL       string
 	ForceOpus bool
+}
+
+type ffprobe struct {
+	Format struct {
+		Tags struct {
+			Title  string
+			Artist string
+		}
+	}
 }
 
 type Meta struct {
@@ -368,6 +379,30 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 
 			if info.Title == "" {
 				return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
+			}
+			if badTitleRegexp.MatchString(info.Title) {
+				log.Println("Fetching title from media file metadata")
+				args := []string{"-i", tmpFileName + "." + info.Extension,
+					"-print_format", "json",
+					"-v", "quiet",
+					"-show_format",
+				}
+				ffCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
+				defer cancel()
+				out, err := exec.CommandContext(ffCtx, "/usr/bin/ffprobe", args...).Output()
+				if err != nil {
+					return err
+				}
+				ff := ffprobe{}
+				err = json.Unmarshal(out, &ff)
+				if err != nil {
+					return err
+				}
+				title := ff.Format.Tags.Title
+				artist := ff.Format.Tags.Artist
+				if title != "" && artist != "" {
+					info.Title = artist + " - " + title
+				}
 			}
 			sanitizedTitle := filenameReplacer.Replace(info.Title)
 			sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
