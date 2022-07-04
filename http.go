@@ -67,7 +67,7 @@ type Request struct {
 }
 
 type ffprobe struct {
-	Format struct {
+	Streams []struct {
 		Tags struct {
 			Title  string
 			Artist string
@@ -382,10 +382,14 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 			}
 			if badTitleRegexp.MatchString(info.Title) {
 				log.Println("Fetching title from media file metadata")
-				args := []string{"-i", tmpFileName + "." + info.Extension,
+				filename := tmpFileName + "." + info.Extension
+				if forceOpus {
+					filename = tmpFileName + ".opus"
+				}
+				args := []string{"-i", filename,
 					"-print_format", "json",
 					"-v", "quiet",
-					"-show_format",
+					"-show_streams",
 				}
 				ffCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
 				defer cancel()
@@ -398,10 +402,12 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 				if err != nil {
 					return err
 				}
-				title := ff.Format.Tags.Title
-				artist := ff.Format.Tags.Artist
-				if title != "" && artist != "" {
-					info.Title = artist + " - " + title
+				if len(ff.Streams) > 0 {
+					title := ff.Streams[0].Tags.Title
+					artist := ff.Streams[0].Tags.Artist
+					if title != "" && artist != "" {
+						info.Title = artist + " - " + title
+					}
 				}
 			}
 			sanitizedTitle := filenameReplacer.Replace(info.Title)
