@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -260,13 +258,11 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 
 func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.URL, webFileName, diskFileName string, forceOpus bool) error {
 
-	rPipe, wPipe := io.Pipe()
-	defer rPipe.Close()
-
 	tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
 	defer cancel()
 
 	errCh := make(chan error)
+	cmdOutCh := make(chan string, 10)
 
 	// filename is md5 sum of URL
 	urlSum := md5.Sum([]byte(url.String()))
@@ -302,16 +298,34 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		args = append(args, url.String())
 
 		log.Printf("Running command %v\n", append([]string{ws.YTCmd}, args...))
-		err := RunCommandCh(tCtx, wPipe, ws.YTCmd, args...)
+		err := RunCommandCh(tCtx, cmdOutCh, ws.YTCmd, args...)
 		if err != nil {
-			log.Printf("command err %s", err)
+		loop:
+			// read any messages on cmdOutCh, then send error
+			for {
+				select {
+				case line := <-cmdOutCh:
+					m := Msg{Key: "unknown", Value: line}
+					outCh <- m
+				default:
+					break loop
+				}
+			}
 			errCh <- err
 		}
+		// close cmd output channel to signal that command has finished
+		close(cmdOutCh)
 	}()
 
 	var info Info
 	count := 0
 	for {
+		select {
+		case err := <-errCh:
+			return err
+		default:
+		}
+
 		count++
 		if count > 20 {
 			return fmt.Errorf("waited too long for info file")
@@ -362,7 +376,6 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		}()
 	}
 
-	stdout := bufio.NewReader(rPipe)
 	lastOut := time.Now()
 	for {
 		select {
@@ -371,12 +384,8 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		default:
 		}
 
-		line, err := stdout.ReadString('\n')
-		if err != nil {
-			if err != io.EOF {
-				return err
-			}
-
+		line, open := <-cmdOutCh
+		if !open {
 			if info.Title == "" {
 				return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
 			}
@@ -431,7 +440,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 				}
 				outCh <- m
 			}
-			err = os.Rename(tmpFileName2, finalFileName)
+			err := os.Rename(tmpFileName2, finalFileName)
 			if err != nil {
 				return err
 			}
