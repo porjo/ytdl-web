@@ -273,7 +273,8 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		args := []string{
 			"--write-info-json",
 			"--max-filesize", fmt.Sprintf("%d", int(MaxFileSize)),
-			"-f", "worstaudio",
+			// Select the worst quality format that contains audio. It may also contain video
+			"-f", "worstaudio*",
 			// output progress bar as newlines
 			"--newline",
 			// Do not use the Last-modified header to set the file modification time
