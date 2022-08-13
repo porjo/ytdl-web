@@ -94,7 +94,7 @@ type MetaFormat struct {
 
 type Info struct {
 	Title       string
-	FileSize    int
+	FileSize    int64
 	Extension   string `json:"ext"`
 	DownloadURL string
 }
@@ -364,11 +364,24 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 					return
 				default:
 				}
-				fi, err := os.Stat(tmpFileName + ".opus")
+				opusFI, err := os.Stat(tmpFileName + ".opus")
 				if err == nil {
+					if info.Extension == "mp3" {
+						mp3FI, err := os.Stat(tmpFileName + ".mp3")
+						if err == nil {
+							// Opus compression ratio from MP3 approximately 1:4
+							pctf := (float64(opusFI.Size()) / (float64(mp3FI.Size()) / 4.0)) * 100
+							pct := fmt.Sprintf("%.1f", pctf)
+							m := Msg{
+								Key:   "progress",
+								Value: Progress{Pct: pct},
+							}
+							outCh <- m
+						}
+					}
 					m := Msg{
 						Key:   "unknown",
-						Value: fmt.Sprintf("opus file size %.2f MB\n", float32(fi.Size())*1e-6),
+						Value: fmt.Sprintf("opus file size %.2f MB\n", float32(opusFI.Size())*1e-6),
 					}
 					outCh <- m
 				}
