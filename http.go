@@ -358,6 +358,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 	// output size of opus file as it gets written
 	if forceOpus {
 		go func() {
+			var startTime time.Time
 			for {
 				select {
 				case <-tCtx.Done():
@@ -366,15 +367,27 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 				}
 				opusFI, err := os.Stat(tmpFileName + ".opus")
 				if err == nil {
+					if startTime.IsZero() {
+						startTime = time.Now()
+					}
 					if info.Extension == "mp3" {
 						mp3FI, err := os.Stat(tmpFileName + ".mp3")
 						if err == nil {
 							// Opus compression ratio from MP3 approximately 1:4
-							pctf := (float64(opusFI.Size()) / (float64(mp3FI.Size()) / 4.0)) * 100
+							pctf := (float64(opusFI.Size()) / (float64(mp3FI.Size()) / 4)) * 100
 							pct := fmt.Sprintf("%.1f", pctf)
+							diff := time.Since(startTime)
+							etaStr := ""
+							if pctf > 0 {
+								eta := time.Duration((float64(diff) / pctf) * (100 - pctf)).Round(time.Second)
+								etaStr = eta.String()
+							}
 							m := Msg{
-								Key:   "progress",
-								Value: Progress{Pct: pct},
+								Key: "progress",
+								Value: Progress{
+									Pct: pct,
+									ETA: etaStr,
+								},
 							}
 							outCh <- m
 						}
@@ -474,7 +487,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 
 		m := getYTProgress(line)
 		if m != nil {
-			if time.Now().Sub(lastOut) > 500*time.Millisecond {
+			if time.Since(lastOut) > 500*time.Millisecond {
 				outCh <- *m
 				lastOut = time.Now()
 			}
