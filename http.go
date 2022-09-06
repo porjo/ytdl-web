@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -104,6 +105,7 @@ type Progress struct {
 	FileSize string
 	ETA      string
 }
+
 type Conn struct {
 	*websocket.Conn
 }
@@ -210,6 +212,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 				err := ws.msgHandler(ctx, outCh, req)
 				if err != nil {
+					log.Printf("Error '%s'\n", err)
 					errCh <- err
 				}
 				return
@@ -250,13 +253,32 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 	webFileName := ws.OutPath + "/ytdl-"
 	diskFileName := ws.WebRoot + "/" + webFileName
 
-	err = ws.ytDownload(ctx, outCh, url, webFileName, diskFileName, req.ForceOpus)
+	restartCh := make(chan bool)
+	ctx1, cancel1 := context.WithCancel(ctx)
+	defer cancel1()
+	err = ws.ytDownload(ctx1, outCh, restartCh, url, webFileName, diskFileName, req.ForceOpus)
+	if err != nil {
+		return err
+	}
 
-	return err
+	select {
+	case <-restartCh:
+		ctx2, cancel2 := context.WithCancel(ctx)
+		defer cancel2()
+		cancel1()
+		var restartCh2 chan bool
+		err = ws.ytDownload(ctx2, outCh, restartCh2, url, webFileName, diskFileName, req.ForceOpus)
+		if err != nil {
+			return err
+		}
+	default:
+	}
 
+	close(outCh)
+	return nil
 }
 
-func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.URL, webFileName, diskFileName string, forceOpus bool) error {
+func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh chan bool, url *url.URL, webFileName, diskFileName string, forceOpus bool) error {
 
 	tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
 	defer cancel()
@@ -317,6 +339,8 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		// close cmd output channel to signal that command has finished
 		close(cmdOutCh)
 	}()
+
+	startTime := time.Now()
 
 	var info Info
 	count := 0
@@ -485,10 +509,26 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		}
 		//fmt.Println(line)
 
-		m := getYTProgress(line)
-		if m != nil {
+		p := getYTProgress(line)
+		if p != nil {
+			pct, err := strconv.ParseFloat(p.Pct, 64)
+			if err != nil {
+				return err
+			}
+			if restartCh != nil {
+				if time.Since(startTime) > time.Second*5 && pct < 10 {
+					close(restartCh)
+					msg := "Restarting download...\n"
+					log.Printf(msg)
+					m := Msg{Key: "unknown", Value: msg}
+					outCh <- m
+					return nil
+				}
+			}
+
 			if time.Since(lastOut) > 500*time.Millisecond {
-				outCh <- *m
+				m := Msg{Key: "progress", Value: *p}
+				outCh <- m
 				lastOut = time.Now()
 			}
 		} else {
@@ -497,23 +537,18 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, url *url.
 		}
 	}
 
-	close(outCh)
 	return nil
 }
 
-func getYTProgress(v string) *Msg {
-	var m *Msg
+func getYTProgress(v string) *Progress {
 	matches := ytProgressRe.FindStringSubmatch(v)
 
+	var p *Progress
 	if len(matches) == 4 {
-		m = new(Msg)
-		m.Key = "progress"
-		p := Progress{
-			Pct:      matches[1],
-			FileSize: matches[2],
-			ETA:      matches[3],
-		}
-		m.Value = p
+		p = new(Progress)
+		p.Pct = matches[1]
+		p.FileSize = matches[2]
+		p.ETA = matches[3]
 	}
-	return m
+	return p
 }
