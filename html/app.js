@@ -15,11 +15,19 @@ var progLast = null;
 $(function(){
 	var ws = new WebSocket(ws_uri);
 
-	var searchParams = new URLSearchParams(window.location.search);
+	const url = new URL(window.location);
+	const searchParams = new URLSearchParams(url.search);
 	var inputURL = searchParams.get('url');
 	if (inputURL) {
 		$("#url").val(inputURL);
 	}
+
+	$("#url").on('paste', function(e) {
+		var data = e.originalEvent.clipboardData.getData('Text');
+		searchParams.set('url', encodeURI(data));
+		console.log(searchParams.toString());
+		window.location.search = searchParams;
+	});
 
 	$("#go-button").click(function() {
 		if (ws.readyState === 1) {
