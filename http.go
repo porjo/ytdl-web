@@ -340,8 +340,6 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 		close(cmdOutCh)
 	}()
 
-	startTime := time.Now()
-
 	var info Info
 	count := 0
 	for {
@@ -427,6 +425,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 		}()
 	}
 
+	var startDownload time.Time
 	lastOut := time.Now()
 	for {
 		select {
@@ -511,12 +510,15 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 		p := getYTProgress(line)
 		if p != nil {
+			if startDownload.IsZero() {
+				startDownload = time.Now()
+			}
 			pct, err := strconv.ParseFloat(p.Pct, 64)
 			if err != nil {
 				return err
 			}
 			if restartCh != nil {
-				if time.Since(startTime) > time.Second*5 && pct < 10 {
+				if time.Since(startDownload) > time.Second*5 && pct < 10 {
 					close(restartCh)
 					msg := "Restarting download...\n"
 					log.Printf(msg)
