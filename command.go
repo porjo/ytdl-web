@@ -29,7 +29,9 @@ func RunCommandCh(ctx context.Context, outCh chan<- string, command string, flag
 		}
 	}()
 	err := cmd.Run()
-	// kill process group including children
-	syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+	if err == nil {
+		// kill process group including children
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+	}
 	return err
 }

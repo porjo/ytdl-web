@@ -31,6 +31,8 @@ const ClientJobs = 5
 const PingInterval = 10 * time.Second
 const WriteWait = 2 * time.Second
 
+const YtdlpSocketTimeout = 3
+
 // default content expiry in seconds
 const DefaultExpiry = 7200
 
@@ -301,6 +303,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			"--newline",
 			// Do not use the Last-modified header to set the file modification time
 			"--no-mtime",
+			"--socket-timeout", fmt.Sprintf("%d", YtdlpSocketTimeout),
 		}
 
 		if ws.SponsorBlock {
