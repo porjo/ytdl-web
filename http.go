@@ -555,9 +555,9 @@ func getYTProgress(v string) *Progress {
 		downloaded, _ := strconv.Atoi(matches[1])
 		total, _ := strconv.Atoi(matches[2])
 		eta, _ := strconv.Atoi(matches[3])
-		pct := float32(downloaded) / float32(total) * 100.0
+		pct := float64(downloaded) / float64(total) * 100.0
 		p.Pct = fmt.Sprintf("%.2f", pct)
-		p.FileSize = fmt.Sprintf("%.2f", float32(total)/(1024.0*1024.0))
+		p.FileSize = fmt.Sprintf("%.2f", float64(total)/(1024.0*1024.0))
 		p.ETA = fmt.Sprintf("%v", time.Duration(eta)*time.Second)
 	}
 	return p
