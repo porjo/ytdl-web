@@ -19,8 +19,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// capture progress output e.g '73.2% of 6.25MiB ETA 00:01'
-var ytProgressRe = regexp.MustCompile(`([\d.]+)% of *~?([\d.]+)(?:.*ETA ([\d:]+))?`)
+// capture progress output e.g '100 of 10000000 eta 30'
+var ytProgressRe = regexp.MustCompile(`([\d]+) of ([\d]+) eta ([\d]+)`)
 
 const MaxFileSize = 170e6 // 150 MB
 
@@ -301,6 +301,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			"-f", "worstaudio*",
 			// output progress bar as newlines
 			"--newline",
+			"--progress-template", "%(progress.downloaded_bytes)s of %(progress.total_bytes)s eta %(progress.eta)s",
 			// Do not use the Last-modified header to set the file modification time
 			"--no-mtime",
 			"--socket-timeout", fmt.Sprintf("%d", YtdlpSocketTimeout),
@@ -551,9 +552,13 @@ func getYTProgress(v string) *Progress {
 	var p *Progress
 	if len(matches) == 4 {
 		p = new(Progress)
-		p.Pct = matches[1]
-		p.FileSize = matches[2]
-		p.ETA = matches[3]
+		downloaded, _ := strconv.Atoi(matches[1])
+		total, _ := strconv.Atoi(matches[2])
+		eta, _ := strconv.Atoi(matches[3])
+		pct := float32(downloaded) / float32(total) * 100.0
+		p.Pct = fmt.Sprintf("%.2f", pct)
+		p.FileSize = fmt.Sprintf("%.2f", float32(total)/(1024.0*1024.0))
+		p.ETA = fmt.Sprintf("%v", time.Duration(eta)*time.Second)
 	}
 	return p
 }
