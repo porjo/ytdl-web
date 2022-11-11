@@ -553,20 +553,20 @@ func getYTProgress(v string) *Progress {
 	if len(matches) == 5 {
 		p = new(Progress)
 		downloaded, _ := strconv.Atoi(matches[1])
-		total := 0.0
+		total := 0
 		// if total_bytes is missing, try total_bytes_estimate
 		if matches[2] != "NA" {
-			totali, _ := strconv.Atoi(matches[2])
-			total = float64(totali)
+			total, _ = strconv.Atoi(matches[2])
 		} else {
 			// for some reason we get decimal for the estimated bytes
-			total, _ = strconv.ParseFloat(matches[3], 64)
-
+			totalf, _ := strconv.ParseFloat(matches[3], 64)
+			// don't care about loss of precision
+			total = int(totalf)
 		}
 		eta, _ := strconv.Atoi(matches[4])
-		pct := float64(downloaded) / total * 100.0
+		pct := float64(downloaded) / float64(total) * 100.0
 		p.Pct = fmt.Sprintf("%.2f", pct)
-		p.FileSize = fmt.Sprintf("%.2f", total/(1024.0*1024.0))
+		p.FileSize = fmt.Sprintf("%.2f", float64(total)/(1024.0*1024.0))
 		p.ETA = fmt.Sprintf("%v", time.Duration(eta)*time.Second)
 	}
 	return p
