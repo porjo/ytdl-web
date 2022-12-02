@@ -305,6 +305,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			// Do not use the Last-modified header to set the file modification time
 			"--no-mtime",
 			"--socket-timeout", fmt.Sprintf("%d", YtdlpSocketTimeout),
+			"--no-playlist",
 		}
 
 		if ws.SponsorBlock {
