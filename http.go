@@ -31,7 +31,7 @@ const ClientJobs = 5
 const PingInterval = 10 * time.Second
 const WriteWait = 2 * time.Second
 
-const YtdlpSocketTimeout = 3
+const YtdlpSocketTimeout = 10
 
 // default content expiry in seconds
 const DefaultExpiry = 7200
