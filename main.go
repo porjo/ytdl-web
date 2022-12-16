@@ -22,8 +22,8 @@ func main() {
 	sponsorBlockCats := flag.String("sponsorBlockCategories", "sponsor", "set SponsorBlock categories (comma separated)")
 	webRoot := flag.String("webRoot", "html", "web root directory")
 	outPath := flag.String("outPath", "dl", "where to store downloaded files (relative to web root)")
-	timeout := flag.Int("timeout", DefaultProcessTimeout, "process timeout (seconds)")
-	expiry := flag.Int("expiry", DefaultExpiry, "expire downloaded content (seconds)")
+	timeout := flag.Int("timeout", DefaultProcessTimeoutSec, "process timeout (seconds)")
+	expiry := flag.Int("expiry", DefaultExpirySec, "expire downloaded content (seconds)")
 	port := flag.Int("port", 8080, "listen on this port")
 	flag.Parse()
 
@@ -47,6 +47,7 @@ func main() {
 		OutPath:          *outPath,
 	}
 	http.Handle("/websocket", ws)
+	http.HandleFunc("/dl/stream/", ServeOpusStream(*webRoot))
 	http.Handle("/", http.FileServer(http.Dir(*webRoot)))
 
 	log.Printf("Starting cleanup routine...\n")
@@ -54,7 +55,13 @@ func main() {
 	go fileCleanup(*webRoot+"/"+*outPath, expiryD)
 
 	log.Printf("Listening on :%d...\n", *port)
-	err = http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
+
+	srv := &http.Server{
+		Addr:         fmt.Sprintf(":%d", *port),
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: HTTPWriteTimeoutSec,
+	}
+	err = srv.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
 	}

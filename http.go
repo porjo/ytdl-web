@@ -4,13 +4,18 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,16 +30,22 @@ var ytProgressRe = regexp.MustCompile(`([\d]+) of ([\dNA]+) / ([\d.NA]+) eta ([\
 const MaxFileSize = 170e6 // 150 MB
 
 // default process timeout in seconds (if not explicitly set via flag)
-const DefaultProcessTimeout = 300
+const DefaultProcessTimeoutSec = 300
 const ClientJobs = 5
 
-const PingInterval = 10 * time.Second
-const WriteWait = 2 * time.Second
+// timeout opus stream if no new data read from file in this time
+const OpusStreamTimeoutSec = 30 * time.Second
 
-const YtdlpSocketTimeout = 10
+// http response deadline (client doesn't read data fast enough)
+const HTTPWriteTimeoutSec = 300 * time.Second
+
+const WSPingIntervalSec = 10 * time.Second
+const WSWriteWaitSec = 2 * time.Second
+
+const YtdlpSocketTimeoutSec = 10
 
 // default content expiry in seconds
-const DefaultExpiry = 7200
+const DefaultExpirySec = 7200
 
 // filename sanitization
 // swap specific special characters
@@ -63,8 +74,7 @@ type Msg struct {
 }
 
 type Request struct {
-	URL       string
-	ForceOpus bool
+	URL string
 }
 
 type ffprobe struct {
@@ -124,7 +134,7 @@ type wsHandler struct {
 
 func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ws.Timeout == 0 {
-		ws.Timeout = time.Duration(DefaultProcessTimeout) * time.Second
+		ws.Timeout = time.Duration(DefaultProcessTimeoutSec)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -143,7 +153,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// setup ping/pong to keep connection open
 	go func(remoteAddr string) {
-		ticker := time.NewTicker(PingInterval)
+		ticker := time.NewTicker(WSPingIntervalSec)
 		defer ticker.Stop()
 
 		for {
@@ -153,7 +163,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			case <-ticker.C:
 				// WriteControl can be called concurrently
-				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WriteWait)); err != nil {
+				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WSWriteWaitSec)); err != nil {
 					log.Printf("WS %s: ping client, err %s\n", remoteAddr, err)
 					cancel()
 					return
@@ -258,7 +268,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 	restartCh := make(chan bool)
 	ctx1, cancel1 := context.WithCancel(ctx)
 	defer cancel1()
-	err = ws.ytDownload(ctx1, outCh, restartCh, url, webFileName, diskFileName, req.ForceOpus)
+	err = ws.ytDownload(ctx1, outCh, restartCh, url, webFileName, diskFileName)
 	if err != nil {
 		return err
 	}
@@ -269,7 +279,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 		defer cancel2()
 		cancel1()
 		var restartCh2 chan bool
-		err = ws.ytDownload(ctx2, outCh, restartCh2, url, webFileName, diskFileName, req.ForceOpus)
+		err = ws.ytDownload(ctx2, outCh, restartCh2, url, webFileName, diskFileName)
 		if err != nil {
 			return err
 		}
@@ -280,7 +290,13 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 	return nil
 }
 
-func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh chan bool, url *url.URL, webFileName, diskFileName string, forceOpus bool) error {
+func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh chan bool, url *url.URL, webFileName, diskFileName string) error {
+
+	forceOpus := false
+
+	if !strings.Contains(url.Host, "youtube.com") {
+		forceOpus = true
+	}
 
 	tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
 	defer cancel()
@@ -304,8 +320,9 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			"--progress-template", "%(progress.downloaded_bytes)s of %(progress.total_bytes)s / %(progress.total_bytes_estimate)s eta %(progress.eta)s",
 			// Do not use the Last-modified header to set the file modification time
 			"--no-mtime",
-			"--socket-timeout", fmt.Sprintf("%d", YtdlpSocketTimeout),
+			"--socket-timeout", fmt.Sprintf("%d", YtdlpSocketTimeoutSec),
 			"--no-playlist",
+			"-o", tmpFileName + ".%(ext)s",
 		}
 
 		if ws.SponsorBlock {
@@ -317,12 +334,10 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			args = append(args, []string{
 				"--audio-format", "opus",
 				"--audio-quality", "32K",
+				// extract audio
 				"-x",
 			}...)
 		}
-		args = append(args, []string{
-			"-o", tmpFileName + ".%(ext)s",
-		}...)
 		args = append(args, url.String())
 
 		log.Printf("Running command %v\n", append([]string{ws.YTCmd}, args...))
@@ -384,50 +399,8 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 	// output size of opus file as it gets written
 	if forceOpus {
-		go func() {
-			var startTime time.Time
-			for {
-				select {
-				case <-tCtx.Done():
-					return
-				default:
-				}
-				opusFI, err := os.Stat(tmpFileName + ".opus")
-				if err == nil {
-					if startTime.IsZero() {
-						startTime = time.Now()
-					}
-					if info.Extension == "mp3" {
-						mp3FI, err := os.Stat(tmpFileName + ".mp3")
-						if err == nil {
-							// Opus compression ratio from MP3 approximately 1:4
-							pctf := (float64(opusFI.Size()) / (float64(mp3FI.Size()) / 4)) * 100
-							pct := fmt.Sprintf("%.1f", pctf)
-							diff := time.Since(startTime)
-							etaStr := ""
-							if pctf > 0 {
-								eta := time.Duration((float64(diff) / pctf) * (100 - pctf)).Round(time.Second)
-								etaStr = eta.String()
-							}
-							m := Msg{
-								Key: "progress",
-								Value: Progress{
-									Pct: pct,
-									ETA: etaStr,
-								},
-							}
-							outCh <- m
-						}
-					}
-					m := Msg{
-						Key:   "unknown",
-						Value: fmt.Sprintf("opus file size %.2f MB\n", float32(opusFI.Size())*1e-6),
-					}
-					outCh <- m
-				}
-				time.Sleep(3 * time.Second)
-			}
-		}()
+		//go readOpusToClient(tCtx, info, outCh, errCh, tmpFileName)
+		go getOpusFileSize(tCtx, info, outCh, errCh, tmpFileName, ws.OutPath)
 	}
 
 	var startDownload time.Time
@@ -495,6 +468,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				}
 				outCh <- m
 			}
+			// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
 			err := os.Rename(tmpFileName2, finalFileName)
 			if err != nil {
 				return err
@@ -571,4 +545,152 @@ func getYTProgress(v string) *Progress {
 		p.ETA = fmt.Sprintf("%v", time.Duration(eta)*time.Second)
 	}
 	return p
+}
+
+/*
+func readOpusToClient(ctx context.Context, info Info, outCh chan<- Msg, errCh chan error, filename string) {
+	start := true
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+			file, err := os.Open(filename + ".opus")
+			if err != nil {
+				if !errors.Is(err, fs.ErrNotExist) {
+					errCh <- fmt.Errorf("Error opening opus file '%s': %w", filename+".opus", err)
+					return
+				} else {
+					continue
+				}
+			}
+
+			if start {
+				start = false
+				// trigger client to start reading read
+			}
+
+				data := make([]byte, 1000)
+				i, err := file.Read(data)
+				if err != nil && err != io.EOF {
+					errCh <- fmt.Errorf("Error reading from opus file '%s': %w", filename+".opus", err)
+					return
+				}
+	}
+}
+*/
+
+func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh chan error, filename, webPath string) {
+	var startTime time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		opusFI, err := os.Stat(filename + ".opus")
+		// abort on errors except for ErrNotExist
+		if err != nil {
+			if !errors.Is(err, fs.ErrNotExist) {
+				errCh <- fmt.Errorf("Error getting stat on opus file '%s': %w", filename+".opus", err)
+				return
+			}
+			continue
+		}
+
+		if startTime.IsZero() {
+			info.DownloadURL = webPath + "/stream/" + filepath.Base(filename) + ".opus"
+			m := Msg{Key: "link_stream", Value: info}
+			outCh <- m
+			startTime = time.Now()
+		}
+		if info.Extension == "mp3" {
+			mp3FI, err := os.Stat(filename + ".mp3")
+			if err == nil {
+				// Opus compression ratio from MP3 approximately 1:4
+				pctf := (float64(opusFI.Size()) / (float64(mp3FI.Size()) / 4)) * 100
+				pct := fmt.Sprintf("%.1f", pctf)
+				diff := time.Since(startTime)
+				etaStr := ""
+				if pctf > 0 {
+					eta := time.Duration((float64(diff) / pctf) * (100 - pctf)).Round(time.Second)
+					etaStr = eta.String()
+				}
+				m := Msg{
+					Key: "progress",
+					Value: Progress{
+						Pct: pct,
+						ETA: etaStr,
+					},
+				}
+				outCh <- m
+			}
+		}
+		m := Msg{
+			Key:   "unknown",
+			Value: fmt.Sprintf("opus file size %.2f MB\n", float32(opusFI.Size())*1e-6),
+		}
+		outCh <- m
+		time.Sleep(3 * time.Second)
+	}
+}
+
+// ServeOpusStream sends the .opus file data to the client as a stream
+//
+// Because we are reading a file that is growing as we read it, we can't use normal FileServer as
+// that would send a Content-Length header with a value smaller than the ultimate filesize.
+//
+// By copying the raw bytes into ResponseWriter it causes the response to be sent using
+// HTTP chunked encoding so the client will continue to request more data until the server signals the end.
+//
+// There are a couple of challenges to overcome:
+//  - how to know when the encoding has finished? The current solution is to wait OpusStreamTimeoutSec and
+// end the handler if no data is copied in that time. Is that the best approach?
+//  - how to handle clients that delay requesting more data? In this case ResponseWriter blocks the Copy operation.
+// I think the only solution is to set WriteTimeout on http.Sever
+func ServeOpusStream(webRoot string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		dir := http.Dir(webRoot)
+
+		filename := strings.Replace(path.Clean(r.URL.Path), "stream/", "", 1)
+
+		f, err := dir.Open(filename)
+		if err != nil {
+			msg, code := toHTTPError(err)
+			http.Error(w, msg, code)
+			return
+		}
+		defer f.Close()
+
+		lastData := time.Now()
+		for {
+			// io.Copy doesn't return error on EOF
+			i, err := io.Copy(w, f)
+			if err != nil {
+				fmt.Printf("serveopusstream copy err %s\n", err)
+				return
+			}
+			if i == 0 {
+				if time.Since(lastData) > time.Duration(OpusStreamTimeoutSec) {
+					fmt.Printf("serveopusstream timeout\n")
+					return
+				}
+				time.Sleep(time.Duration(1 * time.Second))
+			} else {
+				lastData = time.Now()
+			}
+		}
+	}
+}
+
+func toHTTPError(err error) (msg string, httpStatus int) {
+	if errors.Is(err, fs.ErrNotExist) {
+		return "404 page not found", http.StatusNotFound
+	}
+	if errors.Is(err, fs.ErrPermission) {
+		return "403 Forbidden", http.StatusForbidden
+	}
+	// Default:
+	return "500 Internal Server Error", http.StatusInternalServerError
 }

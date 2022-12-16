@@ -36,8 +36,7 @@ $(function(){
 			$("#progress-bar > span").css("width", "0%")
 				.text("0%");
 			var url = $("#url").val();
-			var forceOpus = $("#force-opus").is(":checked");
-			var val = {URL: url, ForceOpus: forceOpus};
+			var val = {URL: url};
 			ws.send(JSON.stringify(val));
 			$("#status").append("Requesting URL " + url + "\n");
 			$(this).prop('disabled', true);
@@ -110,6 +109,20 @@ $(function(){
 					$("#progress-bar > span").css("width", "100%")
 						.text("100%");
 					$("#go-button").prop('disabled', false);
+					break;
+				case 'link_stream':
+					console.log('link_stream', msg);
+					$("#output").show();
+					var $audio = $("<audio>")
+					//	.attr("autoplay", "")
+						.attr("controls", "");
+					var $source = $("<source>")
+						.attr("src", encodeURI(msg.Value.DownloadURL))
+						.attr("type", "audio/ogg")
+						.text(msg.Value.DownloadURL);
+					$audio.append($source);
+					$("#links").append($audio);
+					$audio.focus();
 					break;
 				case 'recent':
 					if( msg.Value.length == 0 ) {
