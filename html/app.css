@@ -130,9 +130,36 @@ label {
 	display: none;
 }
 
-#links audio {
+#playa {
+	display: none;
+}
+
+#playa audio {
 	display: block;
 	width: 100%;
+}
+
+#playa .buttons {
+	display: flex;
+	height: 50px;
+}
+
+#playa .buttons button {
+	flex-grow: 1;
+	border: solid #bbb 1px;
+	margin: 1px;
+	width: 33%;
+}
+
+#audioSpeed {
+	flex-grow: 1;
+	border: none;
+	margin: 1px;
+	width: 33%;
+}
+
+#playa .buttons .symbol {
+	font-size: 2em;
 }
 
 #spinner {
