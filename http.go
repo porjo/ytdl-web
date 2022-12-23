@@ -548,40 +548,6 @@ func getYTProgress(v string) *Progress {
 	return p
 }
 
-/*
-func readOpusToClient(ctx context.Context, info Info, outCh chan<- Msg, errCh chan error, filename string) {
-	start := true
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-			file, err := os.Open(filename + ".opus")
-			if err != nil {
-				if !errors.Is(err, fs.ErrNotExist) {
-					errCh <- fmt.Errorf("Error opening opus file '%s': %w", filename+".opus", err)
-					return
-				} else {
-					continue
-				}
-			}
-
-			if start {
-				start = false
-				// trigger client to start reading read
-			}
-
-				data := make([]byte, 1000)
-				i, err := file.Read(data)
-				if err != nil && err != io.EOF {
-					errCh <- fmt.Errorf("Error reading from opus file '%s': %w", filename+".opus", err)
-					return
-				}
-	}
-}
-*/
-
 func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh chan error, filename, webPath string) {
 	var startTime time.Time
 	for {
