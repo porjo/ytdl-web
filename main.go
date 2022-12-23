@@ -47,7 +47,7 @@ func main() {
 		OutPath:          *outPath,
 	}
 	http.Handle("/websocket", ws)
-	http.HandleFunc("/dl/stream/", ServeOpusStream(*webRoot))
+	http.HandleFunc("/dl/stream/", ServeStream(*webRoot))
 	http.Handle("/", http.FileServer(http.Dir(*webRoot)))
 
 	log.Printf("Starting cleanup routine...\n")

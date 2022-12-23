@@ -34,10 +34,11 @@ const DefaultProcessTimeoutSec = 300
 const ClientJobs = 5
 
 // timeout opus stream if no new data read from file in this time
-const OpusStreamTimeoutSec = 30 * time.Second
+const StreamSourceTimeoutSec = 30 * time.Second
 
-// http response deadline (client doesn't read data fast enough)
-const HTTPWriteTimeoutSec = 300 * time.Second
+// FIXME: we need a better way of detecting and timing out slow clients
+// http response deadline (slow reading clients)
+const HTTPWriteTimeoutSec = 3600 * time.Second
 
 const WSPingIntervalSec = 10 * time.Second
 const WSWriteWaitSec = 2 * time.Second
@@ -636,7 +637,7 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 	}
 }
 
-// ServeOpusStream sends the .opus file data to the client as a stream
+// ServeStream sends the file data to the client as a stream
 //
 // Because we are reading a file that is growing as we read it, we can't use normal FileServer as
 // that would send a Content-Length header with a value smaller than the ultimate filesize.
@@ -645,11 +646,11 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 // HTTP chunked encoding so the client will continue to request more data until the server signals the end.
 //
 // There are a couple of challenges to overcome:
-//  - how to know when the encoding has finished? The current solution is to wait OpusStreamTimeoutSec and
+//  - how to know when the encoding has finished? The current solution is to wait StreamSourceTimeoutSec and
 // end the handler if no data is copied in that time. Is that the best approach?
 //  - how to handle clients that delay requesting more data? In this case ResponseWriter blocks the Copy operation.
 // I think the only solution is to set WriteTimeout on http.Sever
-func ServeOpusStream(webRoot string) http.HandlerFunc {
+func ServeStream(webRoot string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dir := http.Dir(webRoot)
 
@@ -668,12 +669,12 @@ func ServeOpusStream(webRoot string) http.HandlerFunc {
 			// io.Copy doesn't return error on EOF
 			i, err := io.Copy(w, f)
 			if err != nil {
-				fmt.Printf("serveopusstream copy err %s\n", err)
+				fmt.Printf("servestream copy err %s\n", err)
 				return
 			}
 			if i == 0 {
-				if time.Since(lastData) > time.Duration(OpusStreamTimeoutSec) {
-					fmt.Printf("serveopusstream timeout\n")
+				if time.Since(lastData) > time.Duration(StreamSourceTimeoutSec) {
+					fmt.Printf("servestream timeout\n")
 					return
 				}
 				time.Sleep(time.Duration(1 * time.Second))
