@@ -36,9 +36,9 @@ const ClientJobs = 5
 // timeout opus stream if no new data read from file in this time
 const StreamSourceTimeoutSec = 30 * time.Second
 
-// FIXME: we need a better way of detecting and timing out slow clients
+// FIXME: need a better way of detecting and timing out slow clients
 // http response deadline (slow reading clients)
-const HTTPWriteTimeoutSec = 3600 * time.Second
+const HTTPWriteTimeoutSec = 1800 * time.Second
 
 const WSPingIntervalSec = 10 * time.Second
 const WSWriteWaitSec = 2 * time.Second
@@ -263,13 +263,10 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 		return fmt.Errorf("url was empty")
 	}
 
-	webFileName := ws.OutPath + "/ytdl-"
-	diskFileName := ws.WebRoot + "/" + webFileName
-
 	restartCh := make(chan bool)
 	ctx1, cancel1 := context.WithCancel(ctx)
 	defer cancel1()
-	err = ws.ytDownload(ctx1, outCh, restartCh, url, webFileName, diskFileName)
+	err = ws.ytDownload(ctx1, outCh, restartCh, url)
 	if err != nil {
 		return err
 	}
@@ -280,7 +277,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 		defer cancel2()
 		cancel1()
 		var restartCh2 chan bool
-		err = ws.ytDownload(ctx2, outCh, restartCh2, url, webFileName, diskFileName)
+		err = ws.ytDownload(ctx2, outCh, restartCh2, url)
 		if err != nil {
 			return err
 		}
@@ -291,7 +288,10 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 	return nil
 }
 
-func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh chan bool, url *url.URL, webFileName, diskFileName string) error {
+func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh chan bool, url *url.URL) error {
+
+	webFileName := ws.OutPath + "/ytdl-"
+	diskFileName := ws.WebRoot + "/" + webFileName
 
 	forceOpus := false
 
@@ -400,7 +400,6 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 	// output size of opus file as it gets written
 	if forceOpus {
-		//go readOpusToClient(tCtx, info, outCh, errCh, tmpFileName)
 		go getOpusFileSize(tCtx, info, outCh, errCh, tmpFileName, ws.OutPath)
 	}
 
@@ -478,12 +477,16 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			if forceOpus {
 				info.DownloadURL = webFileName + ".oga"
 			} else {
-				info.DownloadURL = webFileName + "." + info.Extension
-
+				webFileName2 := webFileName + "." + info.Extension
+				info.DownloadURL = ws.OutPath + "/stream/" + filepath.Base(webFileName2)
+				m := Msg{Key: "link_stream", Value: info}
+				outCh <- m
+				info.DownloadURL = webFileName2
 			}
 
 			m := Msg{Key: "link", Value: info}
 			outCh <- m
+
 			break
 		}
 		//fmt.Println(line)

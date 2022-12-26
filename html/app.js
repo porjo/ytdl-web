@@ -119,7 +119,7 @@ $(function(){
 						.attr("controls", "");
 					var $source = $("<source>")
 						.attr("src", encodeURI(msg.Value.DownloadURL))
-						.attr("type", "audio/ogg")
+						//.attr("type", "audio/ogg")
 						.text(msg.Value.DownloadURL);
 					$audio.append($source);
 					$audio.focus();
@@ -159,17 +159,13 @@ $(function(){
 	$("#togglePlay").click(function() {
 		audio = $("#playa audio")[0];
 		if (audio.paused) {
-			console.log("paused");	
 			audio.play();
 		} else {
-			console.log("playing");	
 			audio.pause();
 		}
 	});
 	$("#backAudio").click(function() {
 		audio = $("#playa audio")[0];
-		console.log("backaudio", audio.currentTime, audio.duration);
-
 		if(audio.currentTime - 15.0 < 0) {
 			audio.currentTime = 0.0;
 		} else {
@@ -178,7 +174,6 @@ $(function(){
 	});
 	$("#forwardAudio").click(function() {
 		audio = $("#playa audio")[0];
-		console.log("forwardaudio", audio.currentTime, audio.duration);
 		if( (audio.currentTime + 15.0) >= audio.duration) {
 			audio.currentTime = audio.duration - 1.0;
 		} else {
@@ -187,9 +182,8 @@ $(function(){
 	});
 	$("#slowAudio").click(function() {
 		audio = $("#playa audio")[0];
-		console.log("slowaudio", audio.playbackRate);
-		if( (audio.playbackRate - 0.1) < 0 ) {
-			audio.playbackRate = 0.0;
+		if( (audio.playbackRate - 0.1) < 0.5 ) {
+			audio.playbackRate = 0.5;
 		} else {
 			audio.playbackRate -= 0.1;
 		}
@@ -197,8 +191,7 @@ $(function(){
 	});
 	$("#speedAudio").click(function() {
 		audio = $("#playa audio")[0];
-		console.log("speedaudio", audio.playbackRate);
-		if( (audio.playbackRate + 0.1) >= 2.0 ) {
+		if( (audio.playbackRate + 0.1) > 2.0 ) {
 			audio.playbackRate = 2.0;
 		} else {
 			audio.playbackRate += 0.1;
