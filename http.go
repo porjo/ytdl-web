@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -120,6 +121,7 @@ type Progress struct {
 }
 
 type Conn struct {
+	sync.Mutex
 	*websocket.Conn
 }
 
@@ -150,7 +152,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("WS %s: Client connected\n", ws.RemoteAddr)
 
 	// wrap Gorilla conn with our conn so we can extend functionality
-	conn := Conn{gconn}
+	conn := Conn{sync.Mutex{}, gconn}
 
 	// setup ping/pong to keep connection open
 	go func(remoteAddr string) {
@@ -241,6 +243,8 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Conn) writeMsg(val interface{}) error {
+	c.Lock()
+	defer c.Unlock()
 	j, err := json.Marshal(val)
 	if err != nil {
 		return err

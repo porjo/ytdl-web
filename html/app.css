@@ -41,7 +41,7 @@ body {
 #main-title {
 	font-family: 'Pacifico', cursive;
 	margin-top: 20px;
-        margin-bottom: 30px;
+        margin-bottom: 10px;
         font-size: 2em;
         font-weight: bold;
         color: #1f4a4d;
@@ -84,7 +84,13 @@ input[type="text"] {
 	margin: 10px 0;
 	padding: 10px;
 	white-space: pre-wrap;
-	max-height: 200px;
+	height: 10px;
+
+	/*Transition time is increased to accomodate the height */
+        transition: height 0.2s linear;
+}
+#status.expand {
+	height: 200px;
 }
 
 label {
@@ -149,6 +155,10 @@ label {
 	border: solid #bbb 1px;
 	margin: 1px;
 	width: 33%;
+	text-shadow: 1px 1px 2px #fff;
+	color: #444;
+	cursor: pointer;
+	background: linear-gradient(0deg, rgb(198, 198, 198) 0%, rgb(217, 215, 215) 100%);
 }
 
 #audioSpeed {
@@ -156,6 +166,10 @@ label {
 	border: none;
 	margin: 1px;
 	width: 33%;
+}
+#audioSpeed span {
+	position: relative;
+	top: 50%;
 }
 
 #playa .buttons .symbol {
@@ -298,22 +312,22 @@ label {
         position: relative;
 }
 #searchbox span {
-        position: absolute;
-        display: block;
-        right: 3px;
-        width: 15px;
-        height: 15px;
-        border-radius: 50%;
-        color: #fff;
-        background-color: #ccc;
-        font: 13px monospace;
-        text-align: center;
-        line-height: 1em;
-        cursor: pointer;
-        top: calc(50% - 7px);
+	position: absolute;
+	display: block;
+	right: 3px;
+	width: 30px;
+	height: 30px;
+	border-radius: 50%;
+	color: #fff;
+	background-color: #ccc;
+	font: 18px monospace;
+	text-align: center;
+	line-height: 1.5em;
+	cursor: pointer;
+	top: calc(50% - 15px);
+	font-weight: bold;
 }
 #searchbox input {
         padding-right: 18px;
         box-sizing: border-box;
 }
-

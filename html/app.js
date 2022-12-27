@@ -38,10 +38,10 @@ $(function(){
 			var url = $("#url").val();
 			var val = {URL: url};
 			ws.send(JSON.stringify(val));
-			$("#status").append("Requesting URL " + url + "\n");
+			$("#status").prepend("Requesting URL " + url + "\n");
 			$(this).prop('disabled', true);
 		} else {
-			$("#status").append("socket not ready\n")
+			$("#status").prepend("socket not ready\n")
 		}
 	});
 
@@ -62,7 +62,7 @@ $(function(){
 				case 'error':
 					$("#output").show();
 					$("#spinner").hide();
-					$("#status").append("Error: " + msg.Value + "\n");
+					$("#status").prepend("Error: " + msg.Value + "\n");
 					break;
 				case 'unknown':
 					$("#output").show();
@@ -145,13 +145,13 @@ $(function(){
 	};
 
 	ws.onclose = function()	{
-		$("#status").append("Connection closed\n");
+		$("#status").prepend("Connection closed\n");
 		console.log("Connection closed");
 		$("#ws-status-light").toggleClass("on off");
 	};
 
 	ws.onopen = function(e) {
-		$("#status").append("Connection opened\n");
+		$("#status").prepend("Connection opened\n");
 		console.log("Connection opened");
 		$("#ws-status-light").toggleClass("off on");
 	}
@@ -166,18 +166,18 @@ $(function(){
 	});
 	$("#backAudio").click(function() {
 		audio = $("#playa audio")[0];
-		if(audio.currentTime - 15.0 < 0) {
+		if(audio.currentTime - 10.0 < 0) {
 			audio.currentTime = 0.0;
 		} else {
-			audio.currentTime -= 15.0;
+			audio.currentTime -= 10.0;
 		}
 	});
 	$("#forwardAudio").click(function() {
 		audio = $("#playa audio")[0];
-		if( (audio.currentTime + 15.0) >= audio.duration) {
+		if( (audio.currentTime + 10.0) >= audio.duration) {
 			audio.currentTime = audio.duration - 1.0;
 		} else {
-			audio.currentTime += 15.0;
+			audio.currentTime += 10.0;
 		}
 	});
 	$("#slowAudio").click(function() {
@@ -187,7 +187,7 @@ $(function(){
 		} else {
 			audio.playbackRate -= 0.1;
 		}
-		$("#audioSpeed").text(audio.playbackRate.toFixed(2) + "x");
+		$("#audioSpeed span").text(audio.playbackRate.toFixed(2) + "x");
 	});
 	$("#speedAudio").click(function() {
 		audio = $("#playa audio")[0];
@@ -196,7 +196,11 @@ $(function(){
 		} else {
 			audio.playbackRate += 0.1;
 		}
-		$("#audioSpeed").text(audio.playbackRate.toFixed(2) + "x");
+		$("#audioSpeed span").text(audio.playbackRate.toFixed(2) + "x");
+	});
+
+	$("#status").click(function() {
+		$(this).toggleClass("expand");
 	});
 
 });
