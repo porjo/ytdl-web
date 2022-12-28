@@ -8,6 +8,7 @@ import (
 
 type recent struct {
 	URL       string
+	StreamURL string
 	Timestamp time.Time
 }
 
@@ -22,6 +23,7 @@ func GetRecentURLs(webRoot, outPath string) ([]recent, error) {
 	for _, file := range files {
 		if !file.IsDir() && file.Name() != ".README" && !strings.HasSuffix(file.Name(), ".json") {
 			r := recent{URL: outPath + "/" + file.Name(), Timestamp: file.ModTime()}
+			r.StreamURL = outPath + "/stream/" + file.Name()
 			recentURLs = append(recentURLs, r)
 		}
 	}

@@ -25,7 +25,6 @@ $(function(){
 	$("#url").on('paste', function(e) {
 		var data = e.originalEvent.clipboardData.getData('Text');
 		searchParams.set('url', encodeURI(data));
-		console.log(searchParams.toString());
 		window.location.search = searchParams;
 	});
 
@@ -111,17 +110,10 @@ $(function(){
 					$("#go-button").prop('disabled', false);
 					break;
 				case 'link_stream':
-					console.log('link_stream', msg);
 					$("#output").show();
 					$("#playa").show();
 					var $audio = $("#playa audio")
-					//	.attr("autoplay", "")
-						.attr("controls", "");
-					var $source = $("<source>")
-						.attr("src", encodeURI(msg.Value.DownloadURL))
-						//.attr("type", "audio/ogg")
-						.text(msg.Value.DownloadURL);
-					$audio.append($source);
+						.attr("src", encodeURI(msg.Value.DownloadURL));
 					$audio.focus();
 					break;
 				case 'recent':
@@ -136,13 +128,26 @@ $(function(){
 							.attr("download", "")
 							.text(msg.Value[i].URL);
 							//.text(msg.Value[i].URL + " " + new Date(msg.Value[i].Timestamp).toString());
+						var $streamPlay = $("<span>", {class: 'stream_play button', html: '&#x23F5;'});
+						$streamPlay.data("stream_url", msg.Value[i].StreamURL);
+						$streamPlay.click(streamPlayClick);
 						$("#recent_urls").append($link);
+						$("#recent_urls").append($streamPlay);
 						$("#recent_urls").append("<br>");
 					}
 					break;
 			}
 		}
 	};
+
+	function streamPlayClick() {
+		$("#output").show();
+		$("#playa").show();
+		var url = $(this).data("stream_url");
+		$("#playa audio")
+			.attr("src", encodeURI(url))
+			.focus();
+	}
 
 	ws.onclose = function()	{
 		$("#status").prepend("Connection closed\n");
