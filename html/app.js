@@ -129,7 +129,7 @@ $(function(){
 							.text(msg.Value[i].URL);
 							//.text(msg.Value[i].URL + " " + new Date(msg.Value[i].Timestamp).toString());
 						var $streamPlay = $("<span>", {class: 'stream_play button', html: '&#x23F5;'});
-						$streamPlay.data("stream_url", msg.Value[i].StreamURL);
+						$streamPlay.data("stream_url", msg.Value[i].URL);
 						$streamPlay.click(streamPlayClick);
 						$("#recent_urls").append($link);
 						$("#recent_urls").append($streamPlay);
