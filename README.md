@@ -6,9 +6,12 @@ Simple web app that takes a Youtube video URL (or any URL supported by [yt-dlp](
 
 ![Screenshot](https://porjo.github.io/ytdl-web/screenshot.png)
 
-Supports [SponsorBlock](https://github.com/ajayyy/SponsorBlock) for removing sponsor segments in a video. Just add the `-sponsorBlock` command parameter. See [yt-dlp doco](https://github.com/yt-dlp/yt-dlp#sponsorblock-options) for more details.
+### Features
 
-By default, the audio codec will be whatever codec is used in the video container (typically AAC). The 'Opus Audio' toggle switch will force the audio to be encoded with Opus for smaller file size.
+- playblack of audio in the browser with skip and speed controls
+- mp3 files converted to Opus format on server-side and available immediately via streamed audio (no waiting for re-encode) 
+- previous downloads displayed on page, with customizable expiry to auto-remove old files
+- supports [SponsorBlock](https://github.com/ajayyy/SponsorBlock) for removing sponsor segments in a video. Just add the `-sponsorBlock` command parameter. See [yt-dlp doco](https://github.com/yt-dlp/yt-dlp#sponsorblock-options) for more details.
 
 ### Usage
 
