@@ -1,4 +1,6 @@
 
+var player = null;
+
 var loc = window.location, ws_uri;
 if (loc.protocol === "https:") {
     ws_uri = "wss:";
@@ -130,6 +132,8 @@ $(function(){
 							//.text(msg.Value[i].URL + " " + new Date(msg.Value[i].Timestamp).toString());
 						var $streamPlay = $("<span>", {class: 'stream_play button', html: '&#x23F5;'});
 						$streamPlay.data("stream_url", msg.Value[i].URL);
+						$streamPlay.data("artist", msg.Value[i].Artist);
+						$streamPlay.data("title", msg.Value[i].Title);
 						$streamPlay.click(streamPlayClick);
 						$("#recent_urls").append($link);
 						$("#recent_urls").append($streamPlay);
@@ -143,10 +147,30 @@ $(function(){
 	function streamPlayClick() {
 		$("#output").show();
 		$("#playa").show();
-		var url = $(this).data("stream_url");
-		$("#playa audio")
-			.attr("src", encodeURI(url))
-			.focus();
+		let url = $(this).data("stream_url");
+		let title = $(this).data("title");
+		let artist = $(this).data("artist");
+
+		if( player === null ) {
+			player = new Shikwasa.Player({
+				container: () => document.querySelector('#playa'),
+				audio: {
+					title: title,
+					artist: artist,
+					src: url
+				},
+				fixed: {
+					type: 'auto',
+					position: 'bottom',
+				}
+			});
+		} else {
+			player.update({
+				title: title,
+				artist: artist,
+				src: encodeURI(url)
+			});
+		}
 	}
 
 	ws.onclose = function()	{
@@ -160,49 +184,6 @@ $(function(){
 		console.log("Connection opened");
 		$("#ws-status-light").toggleClass("off on");
 	}
-
-	$("#togglePlay").click(function() {
-		audio = $("#playa audio")[0];
-		if (audio.paused) {
-			audio.play();
-		} else {
-			audio.pause();
-		}
-	});
-	$("#backAudio").click(function() {
-		audio = $("#playa audio")[0];
-		if(audio.currentTime - 10.0 < 0) {
-			audio.currentTime = 0.0;
-		} else {
-			audio.currentTime -= 10.0;
-		}
-	});
-	$("#forwardAudio").click(function() {
-		audio = $("#playa audio")[0];
-		if( (audio.currentTime + 10.0) >= audio.duration) {
-			audio.currentTime = audio.duration - 1.0;
-		} else {
-			audio.currentTime += 10.0;
-		}
-	});
-	$("#slowAudio").click(function() {
-		audio = $("#playa audio")[0];
-		if( (audio.playbackRate - 0.1) < 0.5 ) {
-			audio.playbackRate = 0.5;
-		} else {
-			audio.playbackRate -= 0.1;
-		}
-		$("#audioSpeed span").text(audio.playbackRate.toFixed(2) + "x");
-	});
-	$("#speedAudio").click(function() {
-		audio = $("#playa audio")[0];
-		if( (audio.playbackRate + 0.1) > 2.0 ) {
-			audio.playbackRate = 2.0;
-		} else {
-			audio.playbackRate += 0.1;
-		}
-		$("#audioSpeed span").text(audio.playbackRate.toFixed(2) + "x");
-	});
 
 	$("#status").click(function() {
 		$(this).toggleClass("expand");

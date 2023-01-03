@@ -79,12 +79,17 @@ type Request struct {
 	URL string
 }
 
+type ffprobeTags struct {
+	Title  string
+	Artist string
+}
+
 type ffprobe struct {
 	Streams []struct {
-		Tags struct {
-			Title  string
-			Artist string
-		}
+		Tags ffprobeTags
+	}
+	Format struct {
+		Tags ffprobeTags
 	}
 }
 
@@ -109,6 +114,7 @@ type MetaFormat struct {
 
 type Info struct {
 	Title       string
+	Artist      string
 	FileSize    int64
 	Extension   string `json:"ext"`
 	DownloadURL string
@@ -129,6 +135,7 @@ type wsHandler struct {
 	Timeout          time.Duration
 	WebRoot          string
 	YTCmd            string
+	FFprobeCmd       string
 	SponsorBlock     bool
 	SponsorBlockCats string
 	OutPath          string
@@ -200,7 +207,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		// Send recently retrieved URLs
-		recentURLs, err := GetRecentURLs(ws.WebRoot, ws.OutPath)
+		recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.FFprobeCmd, ws.Timeout)
 		if err != nil {
 			log.Printf("WS %s: GetRecentURLS err %s\n", ws.RemoteAddr, err)
 			return
@@ -328,6 +335,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			"--socket-timeout", fmt.Sprintf("%d", YtdlpSocketTimeoutSec),
 			"--no-playlist",
 			"-o", tmpFileName + ".%(ext)s",
+			"--embed-metadata",
 		}
 
 		if ws.SponsorBlock {
@@ -427,31 +435,19 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				if forceOpus {
 					filename = tmpFileName + ".opus"
 				}
-				args := []string{"-i", filename,
-					"-print_format", "json",
-					"-v", "quiet",
-					"-show_streams",
-				}
-				ffCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
-				defer cancel()
-				out, err := exec.CommandContext(ffCtx, "/usr/bin/ffprobe", args...).Output()
+
+				ff, err := runFFprobe(ctx, ws.FFprobeCmd, filename, ws.Timeout)
 				if err != nil {
 					return err
 				}
-				ff := ffprobe{}
-				err = json.Unmarshal(out, &ff)
-				if err != nil {
-					return err
+				if ff.Format.Tags.Title != "" {
+					info.Title = ff.Format.Tags.Title
 				}
-				if len(ff.Streams) > 0 {
-					title := ff.Streams[0].Tags.Title
-					artist := ff.Streams[0].Tags.Artist
-					if title != "" && artist != "" {
-						info.Title = artist + " - " + title
-					}
+				if ff.Format.Tags.Artist != "" {
+					info.Artist = ff.Format.Tags.Artist
 				}
 			}
-			sanitizedTitle := filenameReplacer.Replace(info.Title)
+			sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
 			sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
 			sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
 			webFileName += sanitizedTitle
@@ -667,4 +663,27 @@ func toHTTPError(err error) (msg string, httpStatus int) {
 	}
 	// Default:
 	return "500 Internal Server Error", http.StatusInternalServerError
+}
+
+func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.Duration) (*ffprobe, error) {
+	ffCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	args := []string{"-i", filename,
+		"-print_format", "json",
+		"-v", "quiet",
+		//"-show_streams",
+		"-show_format",
+	}
+	fmt.Printf("args %v\n", args)
+	out, err := exec.CommandContext(ffCtx, ffprobeCmd, args...).Output()
+	if err != nil {
+		return nil, fmt.Errorf("error running ffprobe: '%w'", err)
+	}
+	ff := &ffprobe{}
+	err = json.Unmarshal(out, ff)
+	if err != nil {
+		return nil, err
+	}
+
+	return ff, nil
 }

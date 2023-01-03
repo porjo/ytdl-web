@@ -18,6 +18,7 @@ const recentURLsCount = 10
 func main() {
 
 	ytCmd := flag.String("cmd", "/usr/bin/yt-dlp", "path to yt-dlp")
+	ffprobeCmd := flag.String("ffprobe", "/usr/bin/ffprobe", "path to ffprobe")
 	sponsorBlock := flag.Bool("sponsorBlock", false, "enable SponsorBlock ad removal")
 	sponsorBlockCats := flag.String("sponsorBlockCategories", "sponsor", "set SponsorBlock categories (comma separated)")
 	webRoot := flag.String("webRoot", "html", "web root directory")
@@ -42,6 +43,7 @@ func main() {
 		WebRoot:          *webRoot,
 		Timeout:          time.Duration(*timeout) * time.Second,
 		YTCmd:            *ytCmd,
+		FFprobeCmd:       *ffprobeCmd,
 		SponsorBlock:     *sponsorBlock,
 		SponsorBlockCats: *sponsorBlockCats,
 		OutPath:          *outPath,
