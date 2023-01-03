@@ -54,7 +54,7 @@ func main() {
 
 	log.Printf("Starting cleanup routine...\n")
 	expiryD := time.Second * time.Duration(*expiry)
-	go fileCleanup(*webRoot+"/"+*outPath, expiryD)
+	go fileCleanup(filepath.Join(*webRoot, *outPath), expiryD)
 
 	log.Printf("Listening on :%d...\n", *port)
 

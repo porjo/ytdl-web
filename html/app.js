@@ -112,11 +112,8 @@ $(function(){
 					$("#go-button").prop('disabled', false);
 					break;
 				case 'link_stream':
-					$("#output").show();
 					$("#playa").show();
-					var $audio = $("#playa audio")
-						.attr("src", encodeURI(msg.Value.DownloadURL));
-					$audio.focus();
+					updatePlayer(encodeURI(msg.Value.DownloadURL));
 					break;
 				case 'recent':
 					if( msg.Value.length == 0 ) {
@@ -145,12 +142,14 @@ $(function(){
 	};
 
 	function streamPlayClick() {
-		$("#output").show();
 		$("#playa").show();
 		let url = $(this).data("stream_url");
 		let title = $(this).data("title");
 		let artist = $(this).data("artist");
+		updatePlayer(url, title, artist);
+	}
 
+	function updatePlayer(url, title, artist) {
 		if( player === null ) {
 			player = new Shikwasa.Player({
 				container: () => document.querySelector('#playa'),
@@ -159,10 +158,12 @@ $(function(){
 					artist: artist,
 					src: url
 				},
+				/*
 				fixed: {
-					type: 'auto',
+					type: 'fixed',
 					position: 'bottom',
 				}
+				*/
 			});
 		} else {
 			player.update({

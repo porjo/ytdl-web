@@ -302,7 +302,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh chan bool, url *url.URL) error {
 
 	webFileName := ws.OutPath + "/ytdl-"
-	diskFileName := ws.WebRoot + "/" + webFileName
+	diskFileName := filepath.Join(ws.WebRoot, webFileName)
 
 	forceOpus := false
 
@@ -455,6 +455,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			finalFileName := diskFileName + sanitizedTitle + "." + info.Extension
 			tmpFileName2 := tmpFileName + "." + info.Extension
 			if forceOpus {
+				// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
 				finalFileName = diskFileName + sanitizedTitle + ".oga"
 				tmpFileName2 = tmpFileName + ".opus"
 
@@ -468,7 +469,6 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				}
 				outCh <- m
 			}
-			// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
 			err := os.Rename(tmpFileName2, finalFileName)
 			if err != nil {
 				return err
@@ -478,7 +478,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				info.DownloadURL = webFileName + ".oga"
 			} else {
 				webFileName2 := webFileName + "." + info.Extension
-				info.DownloadURL = ws.OutPath + "/stream/" + filepath.Base(webFileName2)
+				info.DownloadURL = filepath.Join(ws.OutPath, filepath.Base(webFileName2))
 				m := Msg{Key: "link_stream", Value: info}
 				outCh <- m
 				info.DownloadURL = webFileName2
@@ -570,7 +570,7 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 		}
 
 		if startTime.IsZero() {
-			info.DownloadURL = webPath + "/stream/" + filepath.Base(filename) + ".opus"
+			info.DownloadURL = filepath.Join(webPath, "stream", filepath.Base(filename)+".opus")
 			m := Msg{Key: "link_stream", Value: info}
 			outCh <- m
 			startTime = time.Now()

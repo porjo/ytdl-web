@@ -143,6 +143,10 @@ label {
 	display: none;
 }
 
+#playa .shk {
+	z-index: 1;
+}
+
 #spinner {
 	display: none;
 }
@@ -258,6 +262,7 @@ label {
 	line-height: 2;
 	overflow-wrap: break-word;
 }
+
 
 .stream_play {
 	font-size: 1.2em;

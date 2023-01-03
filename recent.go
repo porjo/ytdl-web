@@ -19,7 +19,7 @@ type recent struct {
 func GetRecentURLs(ctx context.Context, webRoot, outPath, ffprobeCmd string, cmdTimeout time.Duration) ([]recent, error) {
 	recentURLs := make([]recent, 0)
 
-	files, err := ioutil.ReadDir(webRoot + "/" + outPath)
+	files, err := ioutil.ReadDir(filepath.Join(webRoot, outPath))
 	if err != nil {
 		return nil, err
 	}
