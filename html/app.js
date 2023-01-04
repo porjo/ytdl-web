@@ -146,10 +146,10 @@ $(function(){
 		let url = $(this).data("stream_url");
 		let title = $(this).data("title");
 		let artist = $(this).data("artist");
-		updatePlayer(url, title, artist);
+		updatePlayer(url, title, artist, true);
 	}
 
-	function updatePlayer(url, title, artist) {
+	function updatePlayer(url, title, artist, autoplay=false) {
 		if( player === null ) {
 			player = new Shikwasa.Player({
 				container: () => document.querySelector('#playa'),
@@ -162,15 +162,22 @@ $(function(){
 				fixed: {
 					type: 'fixed',
 					position: 'bottom',
-				}
+				},
 				*/
+				speedOptions: [1.0, 1.1, 1.2],
 			});
 		} else {
-			player.update({
-				title: title,
-				artist: artist,
-				src: encodeURI(url)
-			});
+			//if( player.audio.paused ) {
+				player.update({
+					title: title,
+					artist: artist,
+					src: encodeURI(url)
+				});
+			//}
+		}
+
+		if(autoplay) {
+			player.play();
 		}
 	}
 

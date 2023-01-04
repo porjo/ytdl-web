@@ -143,10 +143,6 @@ label {
 	display: none;
 }
 
-#playa .shk {
-	z-index: 1;
-}
-
 #spinner {
 	display: none;
 }
@@ -256,25 +252,21 @@ label {
 
 #recent_urls {
 	text-align: left;
-	position: relative;
 }
 #recent_urls a {
 	line-height: 2;
 	overflow-wrap: break-word;
 }
 
-
 .stream_play {
 	font-size: 1.2em;
-	position: absolute;
 	right: 0;
 	cursor: pointer;
 }
 
 @media (max-width: 800px) {
 	#recent {
-		margin-left: 5px;
-		margin-right: 5px;
+		margin: 0 auto;
 	}
 }
 
