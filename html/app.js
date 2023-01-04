@@ -122,19 +122,22 @@ $(function(){
 					$("#recent").show();
 					$("#recent_urls").empty();
 					for (let i=0; i< msg.Value.length; i++) {
-						var $link = $("<a>")
-							.attr("href", encodeURI(msg.Value[i].URL))
-							.attr("download", "")
-							.text(msg.Value[i].URL);
-							//.text(msg.Value[i].URL + " " + new Date(msg.Value[i].Timestamp).toString());
-						var $streamPlay = $("<span>", {class: 'stream_play button', html: '&#x23F5;'});
+						let artist = msg.Value[i].Artist;
+						let title = msg.Value[i].Title;
+
+						let $ru = $("<div>", {class: 'recent_url'});
+						$ru.append($("<span>", {text: artist}));
+						$ru.append($("<span>", {text: title}));
+
+						$playButton = $("#play_button_hidden svg").prop('outerHTML');
+						let $streamPlay = $("<div>", {class: 'stream_play', html: $playButton});
 						$streamPlay.data("stream_url", msg.Value[i].URL);
-						$streamPlay.data("artist", msg.Value[i].Artist);
-						$streamPlay.data("title", msg.Value[i].Title);
+						$streamPlay.data("artist", artist);
+						$streamPlay.data("title", title);
 						$streamPlay.click(streamPlayClick);
-						$("#recent_urls").append($link);
-						$("#recent_urls").append($streamPlay);
-						$("#recent_urls").append("<br>");
+						$ru.append($link);
+						$ru.append($streamPlay);
+						$("#recent_urls").append($ru);
 					}
 					break;
 			}

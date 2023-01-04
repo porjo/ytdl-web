@@ -242,26 +242,25 @@ label {
 
 #recent {
 	display: none;
-	max-width: 500px;
-	margin: auto;
-	margin-top: 50px;
-	border: 1px solid #ddd;
+	margin: 20px auto;
 	padding: 10px;
-	border-radius: 5px;
 }
 
-#recent_urls {
-	text-align: left;
-}
-#recent_urls a {
-	line-height: 2;
-	overflow-wrap: break-word;
+.recent_url {
+	display: flex;
+	justify-content: space-evenly;
+	padding: 10px;
+	align-items: center;
 }
 
 .stream_play {
-	font-size: 1.2em;
-	right: 0;
 	cursor: pointer;
+	height: 30px;
+	width: 30px;
+	margin: 0 10px;
+}
+.stream_play svg {
+	fill: #555;
 }
 
 @media (max-width: 800px) {
