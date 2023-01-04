@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
@@ -32,7 +31,6 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath, ffprobeCmd string, cmd
 			}
 			r := recent{}
 			r.URL = filepath.Join(outPath, file.Name())
-			fmt.Printf("recent ff %+v\n", ff)
 			if ff.Format.Tags.Title != "" {
 				r.Title = ff.Format.Tags.Title
 			}

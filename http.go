@@ -674,7 +674,6 @@ func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.D
 		//"-show_streams",
 		"-show_format",
 	}
-	fmt.Printf("args %v\n", args)
 	out, err := exec.CommandContext(ffCtx, ffprobeCmd, args...).Output()
 	if err != nil {
 		return nil, fmt.Errorf("error running ffprobe: '%w'", err)
