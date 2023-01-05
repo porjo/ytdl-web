@@ -141,6 +141,7 @@ label {
 
 #playa {
 	display: none;
+	margin: 20px auto;
 }
 
 #spinner {
@@ -248,7 +249,7 @@ label {
 
 .recent_url {
 	display: flex;
-	justify-content: space-evenly;
+	justify-content: space-between;
 	padding: 10px;
 	align-items: center;
 }
@@ -266,6 +267,9 @@ label {
 @media (max-width: 800px) {
 	#recent {
 		margin: 0 auto;
+	}
+	#playa {
+		margin: 0;
 	}
 }
 
