@@ -16,7 +16,7 @@ type recent struct {
 	Timestamp time.Time
 }
 
-func GetRecentURLs(ctx context.Context, webRoot, outPath, ffprobeCmd string, cmdTimeout time.Duration) ([]recent, error) {
+func GetRecentURLs(ctx context.Context, webRoot, outPath string, cmdTimeout time.Duration) ([]recent, error) {
 	recentURLs := make([]recent, 0)
 
 	files, err := ioutil.ReadDir(filepath.Join(webRoot, outPath))
@@ -26,7 +26,7 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath, ffprobeCmd string, cmd
 
 	for _, file := range files {
 		if !file.IsDir() && file.Name() != ".README" && !strings.HasSuffix(file.Name(), ".json") {
-			ff, err := runFFprobe(ctx, ffprobeCmd, filepath.Join(webRoot, outPath, file.Name()), cmdTimeout)
+			ff, err := runFFprobe(ctx, FFprobeCmd, filepath.Join(webRoot, outPath, file.Name()), cmdTimeout)
 			if err != nil {
 				log.Printf("ffprobe error %w\n", err)
 				continue

@@ -100,8 +100,6 @@ type Conn struct {
 type wsHandler struct {
 	Timeout          time.Duration
 	WebRoot          string
-	YTCmd            string
-	FFprobeCmd       string
 	SponsorBlock     bool
 	SponsorBlockCats string
 	OutPath          string
@@ -173,7 +171,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		// Send recently retrieved URLs
-		recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.FFprobeCmd, ws.Timeout)
+		recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.Timeout)
 		if err != nil {
 			log.Printf("WS %s: GetRecentURLS err %s\n", ws.RemoteAddr, err)
 			return
@@ -319,8 +317,8 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 		}
 		args = append(args, url.String())
 
-		log.Printf("Running command %v\n", append([]string{ws.YTCmd}, args...))
-		err := RunCommandCh(tCtx, cmdOutCh, ws.YTCmd, args...)
+		log.Printf("Running command %v\n", append([]string{YTCmd}, args...))
+		err := RunCommandCh(tCtx, cmdOutCh, YTCmd, args...)
 		if err != nil {
 		loop:
 			// read any messages on cmdOutCh, then send error
@@ -378,7 +376,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 	// output size of opus file as it gets written
 	if forceOpus {
-		go getOpusFileSize(tCtx, info, outCh, errCh, tmpFileName, ws.OutPath)
+		go getOpusFileSize(tCtx, info, outCh, errCh, tmpFileName+".opus", ws.OutPath)
 	}
 
 	var startDownload time.Time
@@ -402,7 +400,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 					filename = tmpFileName + ".opus"
 				}
 
-				ff, err := runFFprobe(ctx, ws.FFprobeCmd, filename, ws.Timeout)
+				ff, err := runFFprobe(ctx, FFprobeCmd, filename, ws.Timeout)
 				if err != nil {
 					return err
 				}
@@ -520,24 +518,33 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 			return
 		default:
 		}
-		opusFI, err := os.Stat(filename + ".opus")
+		opusFI, err := os.Stat(filename)
 		// abort on errors except for ErrNotExist
 		if err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
-				errCh <- fmt.Errorf("Error getting stat on opus file '%s': %w", filename+".opus", err)
+				errCh <- fmt.Errorf("Error getting stat on opus file '%s': %w", filename, err)
 				return
 			}
 			continue
 		}
 
 		if startTime.IsZero() {
-			info.DownloadURL = filepath.Join(webPath, "stream", filepath.Base(filename)+".opus")
+			/*
+				// FIXME this locks up. Why?
+				ff, err := runFFprobe(ctx, FFprobeCmd, filename, time.Second*10)
+				if err != nil {
+					errCh <- err
+					return
+				}
+				info.Title, info.Artist = titleArtist(ff)
+			*/
+			info.DownloadURL = filepath.Join(webPath, "stream", filepath.Base(filename))
 			m := Msg{Key: "link_stream", Value: info}
 			outCh <- m
 			startTime = time.Now()
 		}
 		if info.Extension == "mp3" {
-			mp3FI, err := os.Stat(filename + ".mp3")
+			mp3FI, err := os.Stat(strings.TrimSuffix(filename, filepath.Ext(filename)) + ".mp3")
 			if err == nil {
 				// Opus compression ratio from MP3 approximately 1:4
 				pctf := (float64(opusFI.Size()) / (float64(mp3FI.Size()) / 4)) * 100

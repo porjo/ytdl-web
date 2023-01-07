@@ -31,6 +31,7 @@ func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.D
 		"-show_streams",
 		"-show_format",
 	}
+	fmt.Printf("ffprobe filename %s\n", filename)
 	out, err := exec.CommandContext(ffCtx, ffprobeCmd, args...).Output()
 	if err != nil {
 		return nil, fmt.Errorf("error running ffprobe: '%w'", err)
@@ -46,6 +47,7 @@ func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.D
 
 func titleArtist(ff *ffprobe) (title, artist string) {
 
+	fmt.Printf("ff %+v\n", ff)
 	if ff.Format.Tags.Title != "" {
 		title = ff.Format.Tags.Title
 	}

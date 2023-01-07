@@ -113,7 +113,7 @@ $(function(){
 					break;
 				case 'link_stream':
 					$("#playa").show();
-					updatePlayer(encodeURI(msg.Value.DownloadURL));
+					updatePlayer(encodeURI(msg.Value.DownloadURL), msg.Value.Title, msg.Value.Artist);
 					break;
 				case 'recent':
 					if( msg.Value.length == 0 ) {

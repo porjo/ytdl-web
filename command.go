@@ -8,6 +8,11 @@ import (
 	"syscall"
 )
 
+var (
+	YTCmd      string
+	FFprobeCmd string
+)
+
 func RunCommandCh(ctx context.Context, outCh chan<- string, command string, flags ...string) error {
 	r, w := io.Pipe()
 	defer w.Close()

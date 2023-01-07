@@ -39,11 +39,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	YTCmd = *ytCmd
+	FFprobeCmd = *ffprobeCmd
+
 	ws := &wsHandler{
 		WebRoot:          *webRoot,
 		Timeout:          time.Duration(*timeout) * time.Second,
-		YTCmd:            *ytCmd,
-		FFprobeCmd:       *ffprobeCmd,
 		SponsorBlock:     *sponsorBlock,
 		SponsorBlockCats: *sponsorBlockCats,
 		OutPath:          *outPath,
