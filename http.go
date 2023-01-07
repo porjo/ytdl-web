@@ -512,6 +512,7 @@ func getYTProgress(v string) *Progress {
 
 func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh chan error, filename, webPath string) {
 	var startTime time.Time
+	ffprobeRan := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -528,19 +529,22 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 			continue
 		}
 
-		if startTime.IsZero() {
-			/*
-				// FIXME this locks up. Why?
-				ff, err := runFFprobe(ctx, FFprobeCmd, filename, time.Second*10)
-				if err != nil {
-					errCh <- err
-					return
-				}
-				info.Title, info.Artist = titleArtist(ff)
-			*/
+		// wait until we have some data before running ffprobe
+		if !ffprobeRan && opusFI.Size() > 10000 {
+			ff, err := runFFprobe(ctx, FFprobeCmd, filename, time.Second*10)
+			if err != nil {
+				// FIXME this blocks as nobody is reading
+				errCh <- err
+				return
+			}
+			ffprobeRan = true
+			info.Title, info.Artist = titleArtist(ff)
 			info.DownloadURL = filepath.Join(webPath, "stream", filepath.Base(filename))
 			m := Msg{Key: "link_stream", Value: info}
 			outCh <- m
+		}
+
+		if startTime.IsZero() {
 			startTime = time.Now()
 		}
 		if info.Extension == "mp3" {

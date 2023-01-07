@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"time"
 )
 
@@ -27,15 +26,16 @@ func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.D
 	defer cancel()
 	args := []string{"-i", filename,
 		"-print_format", "json",
-		"-v", "quiet",
+		//		"-v", "quiet",
 		"-show_streams",
 		"-show_format",
 	}
-	fmt.Printf("ffprobe filename %s\n", filename)
-	out, err := exec.CommandContext(ffCtx, ffprobeCmd, args...).Output()
+	//	fmt.Printf("ffprobe cmd %s, filename %s, args %v\n", ffprobeCmd, filename, args)
+	out, err := RunCommand(ffCtx, ffprobeCmd, args...)
 	if err != nil {
 		return nil, fmt.Errorf("error running ffprobe: '%w'", err)
 	}
+
 	ff := &ffprobe{}
 	err = json.Unmarshal(out, ff)
 	if err != nil {
@@ -46,8 +46,6 @@ func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.D
 }
 
 func titleArtist(ff *ffprobe) (title, artist string) {
-
-	fmt.Printf("ff %+v\n", ff)
 	if ff.Format.Tags.Title != "" {
 		title = ff.Format.Tags.Title
 	}
@@ -65,6 +63,5 @@ func titleArtist(ff *ffprobe) (title, artist string) {
 	if artist == "" {
 		artist = "unknown artist"
 	}
-
 	return
 }
