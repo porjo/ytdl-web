@@ -28,7 +28,7 @@ func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.D
 	args := []string{"-i", filename,
 		"-print_format", "json",
 		"-v", "quiet",
-		//"-show_streams",
+		"-show_streams",
 		"-show_format",
 	}
 	out, err := exec.CommandContext(ffCtx, ffprobeCmd, args...).Output()
@@ -58,10 +58,10 @@ func titleArtist(ff *ffprobe) (title, artist string) {
 		artist = ff.Streams[0].Tags.Artist
 	}
 	if title == "" {
-		title = "unknown"
+		title = "unknown title"
 	}
 	if artist == "" {
-		artist = "unknown"
+		artist = "unknown artist"
 	}
 
 	return
