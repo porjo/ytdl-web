@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -77,39 +76,6 @@ type Msg struct {
 
 type Request struct {
 	URL string
-}
-
-type ffprobeTags struct {
-	Title  string
-	Artist string
-}
-
-type ffprobe struct {
-	Streams []struct {
-		Tags ffprobeTags
-	}
-	Format struct {
-		Tags ffprobeTags
-	}
-}
-
-type Meta struct {
-	Id      string
-	Title   string
-	Formats []MetaFormat
-
-	// fallback fields for non-youtube URLs
-	URL      string
-	Ext      string
-	Filesize int
-}
-
-type MetaFormat struct {
-	FileSize  int
-	Vcodec    string
-	Acodec    string
-	Extension string `json:"ext"`
-	URL       string
 }
 
 type Info struct {
@@ -663,26 +629,4 @@ func toHTTPError(err error) (msg string, httpStatus int) {
 	}
 	// Default:
 	return "500 Internal Server Error", http.StatusInternalServerError
-}
-
-func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.Duration) (*ffprobe, error) {
-	ffCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	args := []string{"-i", filename,
-		"-print_format", "json",
-		"-v", "quiet",
-		//"-show_streams",
-		"-show_format",
-	}
-	out, err := exec.CommandContext(ffCtx, ffprobeCmd, args...).Output()
-	if err != nil {
-		return nil, fmt.Errorf("error running ffprobe: '%w'", err)
-	}
-	ff := &ffprobe{}
-	err = json.Unmarshal(out, ff)
-	if err != nil {
-		return nil, err
-	}
-
-	return ff, nil
 }

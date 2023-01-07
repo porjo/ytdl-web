@@ -38,6 +38,17 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath, ffprobeCmd string, cmd
 			if ff.Format.Tags.Artist != "" {
 				r.Artist = ff.Format.Tags.Artist
 			}
+
+			if r.Title == "" && len(ff.Streams) > 0 {
+				r.Title = ff.Streams[0].Tags.Title
+				r.Artist = ff.Streams[0].Tags.Artist
+			}
+			if r.Title == "" {
+				r.Title = "unknown"
+			}
+			if r.Artist == "" {
+				r.Artist = "unknown"
+			}
 			r.Timestamp = file.ModTime()
 			recentURLs = append(recentURLs, r)
 		}
