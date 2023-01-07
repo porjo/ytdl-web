@@ -43,3 +43,26 @@ func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.D
 
 	return ff, nil
 }
+
+func titleArtist(ff *ffprobe) (title, artist string) {
+
+	if ff.Format.Tags.Title != "" {
+		title = ff.Format.Tags.Title
+	}
+	if ff.Format.Tags.Artist != "" {
+		artist = ff.Format.Tags.Artist
+	}
+
+	if title == "" && len(ff.Streams) > 0 {
+		title = ff.Streams[0].Tags.Title
+		artist = ff.Streams[0].Tags.Artist
+	}
+	if title == "" {
+		title = "unknown"
+	}
+	if artist == "" {
+		artist = "unknown"
+	}
+
+	return
+}

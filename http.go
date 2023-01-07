@@ -406,12 +406,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				if err != nil {
 					return err
 				}
-				if ff.Format.Tags.Title != "" {
-					info.Title = ff.Format.Tags.Title
-				}
-				if ff.Format.Tags.Artist != "" {
-					info.Artist = ff.Format.Tags.Artist
-				}
+				info.Title, info.Artist = titleArtist(ff)
 			}
 			sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
 			sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")

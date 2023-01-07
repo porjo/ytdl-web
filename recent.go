@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"io/ioutil"
+	"log"
 	"path/filepath"
 	"strings"
 	"time"
@@ -32,23 +33,7 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath, ffprobeCmd string, cmd
 			}
 			r := recent{}
 			r.URL = filepath.Join(outPath, file.Name())
-			if ff.Format.Tags.Title != "" {
-				r.Title = ff.Format.Tags.Title
-			}
-			if ff.Format.Tags.Artist != "" {
-				r.Artist = ff.Format.Tags.Artist
-			}
-
-			if r.Title == "" && len(ff.Streams) > 0 {
-				r.Title = ff.Streams[0].Tags.Title
-				r.Artist = ff.Streams[0].Tags.Artist
-			}
-			if r.Title == "" {
-				r.Title = "unknown"
-			}
-			if r.Artist == "" {
-				r.Artist = "unknown"
-			}
+			r.Title, r.Artist = titleArtist(ff)
 			r.Timestamp = file.ModTime()
 			recentURLs = append(recentURLs, r)
 		}
