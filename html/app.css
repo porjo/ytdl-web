@@ -254,6 +254,11 @@ label {
 	align-items: center;
 }
 
+.recent_url span {
+	display: inline-block;
+	margin: 0 5px;
+}
+
 .stream_play {
 	cursor: pointer;
 	height: 30px;

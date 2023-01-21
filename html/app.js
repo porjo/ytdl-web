@@ -179,6 +179,8 @@ $(function(){
 			//}
 		}
 
+		document.title = title + " -  " + artist;
+
 		if(autoplay) {
 			player.play();
 		}
