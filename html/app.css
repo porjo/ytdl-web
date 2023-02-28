@@ -155,6 +155,8 @@ label {
 	padding: 20px;
 	margin: 20px 0;
 	background-color: #eee;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 #details label {
