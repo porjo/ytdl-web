@@ -13,6 +13,7 @@ ws_uri += path + "/websocket";
 
 var progTimer = null;
 var progLast = null;
+var seekTimer = null;
 
 $(function(){
 	var ws = new WebSocket(ws_uri);
@@ -161,25 +162,33 @@ $(function(){
 					artist: artist,
 					src: url
 				},
-				/*
-				fixed: {
-					type: 'fixed',
-					position: 'bottom',
-				},
-				*/
 				speedOptions: [1.0, 1.1, 1.2],
 			});
 		} else {
-			//if( player.audio.paused ) {
-				player.update({
-					title: title,
-					artist: artist,
-					src: encodeURI(url)
-				});
-			//}
+			player.update({
+				title: title,
+				artist: artist,
+				src: url
+			});
 		}
 
-		document.title = title + " -  " + artist;
+		document.title = title + " - " + artist;
+
+		let lastPlayTimeSec = Number(localStorage.getItem(url));
+		if(lastPlayTimeSec>0) {
+			let ss = setInterval(() => {
+				if(player.duration > 0) {
+					clearInterval(ss);
+					player.seek(lastPlayTimeSec);
+				}
+			},500);
+		}
+
+		if(seekTimer === null ) {
+			seekTimer = setInterval(() => {
+				localStorage.setItem(url, player.currentTime);
+			},2000);
+		}
 
 		if(autoplay) {
 			player.play();
