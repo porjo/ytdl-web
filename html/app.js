@@ -174,21 +174,33 @@ $(function(){
 
 		document.title = title + " - " + artist;
 
-		let lastPlayTimeSec = Number(localStorage.getItem(url));
-		if(lastPlayTimeSec>0) {
-			let ss = setInterval(() => {
-				if(player.duration > 0) {
-					clearInterval(ss);
-					player.seek(lastPlayTimeSec);
-				}
-			},500);
-		}
+		player.on('loadedmetadata',() => {
+			let obj = JSON.parse(localStorage.getItem(url))
+			if(obj.lastPlayTimeSec && obj.lastPlayTimeSec>0) {
+				player.seek(obj.lastPlayTimeSec);
+			}
 
-		if(seekTimer === null ) {
+			if(seekTimer !== null ) {
+				return
+			}
+
 			seekTimer = setInterval(() => {
-				localStorage.setItem(url, player.currentTime);
+				// cleanup storage
+				for (let i = 0; i < localStorage.length; i++) {
+					let name = localStorage.key(i);
+					let o = JSON.parse(localStorage.getItem(name));
+
+					// remove if older than 3 days
+					if(o.timestamp && (new Date().getTime() - o.timestamp) > 259200 ) {
+						localStorage.removeItem(name);
+					}
+				}
+
+				// store latest play time
+				let o = {lastPlayTimeSec: player.currentTime, timestamp: new Date().getTime()}
+				localStorage.setItem(url, JSON.stringify(o));
 			},2000);
-		}
+		});
 
 		if(autoplay) {
 			player.play();
