@@ -163,6 +163,7 @@ $(function(){
 					src: url
 				},
 				speedOptions: [1.0, 1.1, 1.2],
+				download: true
 			});
 		} else {
 			player.update({
@@ -176,7 +177,7 @@ $(function(){
 
 		player.on('loadedmetadata',() => {
 			let obj = JSON.parse(localStorage.getItem(url))
-			if(obj.lastPlayTimeSec && obj.lastPlayTimeSec>0) {
+			if(obj && obj.lastPlayTimeSec>0) {
 				player.seek(obj.lastPlayTimeSec);
 			}
 
@@ -191,7 +192,7 @@ $(function(){
 					let o = JSON.parse(localStorage.getItem(name));
 
 					// remove if older than 3 days
-					if(o.timestamp && (new Date().getTime() - o.timestamp) > 259200 ) {
+					if(o && (new Date().getTime() - o.timestamp) > 259200 ) {
 						localStorage.removeItem(name);
 					}
 				}
