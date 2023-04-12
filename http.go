@@ -75,7 +75,8 @@ type Msg struct {
 }
 
 type Request struct {
-	URL string
+	URL        string
+	DeleteURLs []string `json:"delete_urls"`
 }
 
 type Info struct {
@@ -169,16 +170,16 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	for {
-		// Send recently retrieved URLs
-		recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.Timeout)
-		if err != nil {
-			log.Printf("WS %s: GetRecentURLS err %s\n", ws.RemoteAddr, err)
-			return
-		}
-		m := Msg{Key: "recent", Value: recentURLs}
-		conn.writeMsg(m)
+	// Send recently retrieved URLs
+	recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.Timeout)
+	if err != nil {
+		log.Printf("WS %s: GetRecentURLS err %s\n", ws.RemoteAddr, err)
+		return
+	}
+	m := Msg{Key: "recent", Value: recentURLs}
+	conn.writeMsg(m)
 
+	for {
 		msgType, raw, err := conn.ReadMessage()
 		if err != nil {
 			log.Printf("WS %s: ReadMessage err %s\n", ws.RemoteAddr, err)
@@ -229,34 +230,46 @@ func (c *Conn) writeMsg(val interface{}) error {
 }
 
 func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Request) error {
-	url, err := url.Parse(req.URL)
-	if err != nil {
-		return err
+
+	if req.URL == "" && len(req.DeleteURLs) == 0 {
+		return fmt.Errorf("unknown parameters")
 	}
 
-	if url.String() == "" {
-		return fmt.Errorf("url was empty")
-	}
-
-	restartCh := make(chan bool)
-	ctx1, cancel1 := context.WithCancel(ctx)
-	defer cancel1()
-	err = ws.ytDownload(ctx1, outCh, restartCh, url)
-	if err != nil {
-		return err
-	}
-
-	select {
-	case <-restartCh:
-		ctx2, cancel2 := context.WithCancel(ctx)
-		defer cancel2()
-		cancel1()
-		var restartCh2 chan bool
-		err = ws.ytDownload(ctx2, outCh, restartCh2, url)
+	if len(req.DeleteURLs) > 0 {
+		err := DeleteFiles(req.DeleteURLs, ws.WebRoot)
 		if err != nil {
 			return err
 		}
-	default:
+	} else if req.URL != "" {
+		url, err := url.Parse(req.URL)
+		if err != nil {
+			return err
+		}
+
+		if url.String() == "" {
+			return fmt.Errorf("url was empty")
+		}
+
+		restartCh := make(chan bool)
+		ctx1, cancel1 := context.WithCancel(ctx)
+		defer cancel1()
+		err = ws.ytDownload(ctx1, outCh, restartCh, url)
+		if err != nil {
+			return err
+		}
+
+		select {
+		case <-restartCh:
+			ctx2, cancel2 := context.WithCancel(ctx)
+			defer cancel2()
+			cancel1()
+			var restartCh2 chan bool
+			err = ws.ytDownload(ctx2, outCh, restartCh2, url)
+			if err != nil {
+				return err
+			}
+		default:
+		}
 	}
 
 	close(outCh)
@@ -443,7 +456,12 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				info.DownloadURL = webFileName2
 			}
 
-			m := Msg{Key: "link", Value: info}
+			// Send recently retrieved URLs
+			recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.Timeout)
+			if err != nil {
+				return fmt.Errorf("WS %s: GetRecentURLS err %w", ws.RemoteAddr, err)
+			}
+			m := Msg{Key: "recent", Value: recentURLs}
 			outCh <- m
 
 			break
@@ -610,12 +628,12 @@ func ServeStream(webRoot string) http.HandlerFunc {
 			// io.Copy doesn't return error on EOF
 			i, err := io.Copy(w, f)
 			if err != nil {
-				fmt.Printf("servestream copy err %s\n", err)
+				log.Printf("servestream copy err %s\n", err)
 				return
 			}
 			if i == 0 {
 				if time.Since(lastData) > time.Duration(StreamSourceTimeoutSec) {
-					fmt.Printf("servestream timeout\n")
+					log.Printf("servestream timeout\n")
 					return
 				}
 				time.Sleep(time.Duration(1 * time.Second))

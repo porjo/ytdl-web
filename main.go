@@ -6,9 +6,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
-	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -67,37 +65,5 @@ func main() {
 	err = srv.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
-	}
-}
-
-func fileCleanup(outPath string, expiry time.Duration) {
-	visit := func(path string, f os.FileInfo, err error) error {
-
-		if err != nil {
-			return err
-		}
-
-		if f.IsDir() || strings.HasPrefix(f.Name(), ".") {
-			return nil
-		}
-
-		// if last modification time is prior to expiry time,
-		// then delete the file
-		if time.Now().Sub(f.ModTime()) > expiry {
-			if err := os.Remove(path); err != nil {
-				return err
-			}
-			log.Printf("old file removed: %s\n", path)
-		}
-		return nil
-	}
-
-	tickChan := time.NewTicker(time.Second * cleanupInterval).C
-
-	for _ = range tickChan {
-		err := filepath.Walk(outPath, visit)
-		if err != nil {
-			log.Printf("file cleanup error: %s\n", err)
-		}
 	}
 }
