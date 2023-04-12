@@ -313,6 +313,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				"--audio-quality", "32K",
 				// extract audio
 				"-x",
+				//	"--postprocessor-args", `ExtractAudio:-compression_level 0`,  // fastest, lowest quality compression
 			}...)
 		}
 		args = append(args, url.String())
@@ -526,6 +527,7 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 				errCh <- fmt.Errorf("Error getting stat on opus file '%s': %w", filename, err)
 				return
 			}
+			time.Sleep(time.Second)
 			continue
 		}
 
