@@ -51,6 +51,12 @@ $(function(){
 		$("#url").val('');
 	});
 
+	$("#recent_header .controls").click(function() {
+		$("#recent_url.selected").each(function() {
+
+		});
+	});
+
 
 	/*
 	ws.onopen = function() {
@@ -129,8 +135,11 @@ $(function(){
 						let $ru = $("<div>", {class: 'recent_url'});
 						$ru.append($("<span>", {text: artist}));
 						$ru.append($("<span>", {text: title}));
+						$ru.click(function() {
+							$(this).toggleClass("selected");
+						});
 
-						$playButton = $("#play_button_hidden svg").prop('outerHTML');
+						$playButton = $("<svg>", {version: "2.0"}).append( $("<use>", {href: "#play-btn"}) );
 						let $streamPlay = $("<div>", {class: 'stream_play', html: $playButton});
 						$streamPlay.data("stream_url", msg.Value[i].URL);
 						$streamPlay.data("artist", artist);
@@ -176,9 +185,15 @@ $(function(){
 		document.title = title + " - " + artist;
 
 		player.on('loadedmetadata',() => {
+		  	console.log("loadedmetadata");
 			let obj = JSON.parse(localStorage.getItem(url))
 			if(obj && obj.lastPlayTimeSec>0) {
+		  		console.log("seek to", obj.lastPlayTimeSec);
 				player.seek(obj.lastPlayTimeSec);
+				if( obj.playbackRate ) {
+		  			console.log("set playbackrate", obj.playbackRate);
+					player.playbackRate = obj.playbackRate;
+				}
 			}
 
 			if(seekTimer !== null ) {
@@ -193,12 +208,13 @@ $(function(){
 
 					// remove if older than 3 days
 					if(o && (new Date().getTime() - o.timestamp) > 259200 ) {
+		  				console.log("cleanup", name, new Date().getTime(), o.timestamp);
 						localStorage.removeItem(name);
 					}
 				}
 
 				// store latest play time
-				let o = {lastPlayTimeSec: player.currentTime, timestamp: new Date().getTime()}
+				let o = {lastPlayTimeSec: player.currentTime, timestamp: new Date().getTime(), playbackRate: player.playbackRate}
 				localStorage.setItem(url, JSON.stringify(o));
 			},2000);
 		});
