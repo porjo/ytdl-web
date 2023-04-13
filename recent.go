@@ -29,7 +29,7 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath string, cmdTimeout time
 		if !file.IsDir() && file.Name() != ".README" && !strings.HasSuffix(file.Name(), ".json") {
 			ff, err := runFFprobe(ctx, FFprobeCmd, filepath.Join(webRoot, outPath, file.Name()), cmdTimeout)
 			if err != nil {
-				log.Printf("ffprobe error %w\n", err)
+				log.Printf("ffprobe error %s\n", err)
 				continue
 			}
 			r := recent{}

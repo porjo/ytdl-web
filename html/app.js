@@ -181,13 +181,10 @@ $(function(){
 		document.title = title + " - " + artist;
 
 		player.on('loadedmetadata',() => {
-		  	console.log("loadedmetadata");
 			let obj = JSON.parse(localStorage.getItem(url))
 			if(obj && obj.lastPlayTimeSec>0) {
-		  		console.log("seek to", obj.lastPlayTimeSec);
 				player.seek(obj.lastPlayTimeSec);
 				if( obj.playbackRate ) {
-		  			console.log("set playbackrate", obj.playbackRate);
 					player.playbackRate = obj.playbackRate;
 				}
 			}
@@ -218,6 +215,9 @@ $(function(){
 		if(autoplay) {
 			player.play();
 		}
+
+		// Add space for player at bottom of page
+		$("body").css("padding-bottom", $(".shk-player").css("height"));
 	}
 
 	ws.onclose = function()	{
