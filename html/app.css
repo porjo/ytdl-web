@@ -247,9 +247,31 @@ label {
 	display: none;
 	margin: 20px auto;
 	padding: 10px;
+	position: relative;
+}
+
+#recent_header {
+	margin: 0 0 20px 0;
+}
+
+#recent_header .heading {
+	font-weight: bold;
+}
+
+#recent_header .controls {
+	cursor: pointer;
+	position: absolute;
+	right: 5px;
+	top: 5px;
+}
+#recent_header .controls svg {
+	width: 20px;
+	height: 20px;
+	fill: #c22a2a;
 }
 
 .recent_url {
+	cursor: pointer;
 	display: flex;
 	justify-content: space-between;
 	padding: 10px;
@@ -261,14 +283,14 @@ label {
 	margin: 0 5px;
 }
 
-.stream_play {
-	cursor: pointer;
+.recent_url.selected {
+	background-color: #ffead3;
+}
+
+.stream_play svg {
 	height: 30px;
 	width: 30px;
-	margin: 0 10px;
-}
-.stream_play svg {
-	fill: #555;
+	fill: #1f8673;
 }
 
 @media (max-width: 800px) {

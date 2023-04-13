@@ -51,6 +51,20 @@ $(function(){
 		$("#url").val('');
 	});
 
+	$("#recent_header .controls").click(function() {
+		let urls = [];
+		$(".recent_url.selected").each(function() {
+			urls.push($(this).find(".stream_play").data("stream_url"));
+			$(this).remove();
+		});
+
+		if( urls.length > 0 ) {
+			console.log("urls", urls);
+			var param = {delete_urls: urls};
+			ws.send(JSON.stringify(param));
+		}
+	});
+
 
 	/*
 	ws.onopen = function() {
@@ -98,21 +112,8 @@ $(function(){
 					var bytes = parseFloat(msg.Value.FileSize)
 					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
-				case 'link':
-					$("#output").show();
-					clearTimeout(progTimer);
-					$("#spinner").hide();
-					var $link = $("<a>")
-						.attr("href", encodeURI(msg.Value.DownloadURL))
-						.attr("download", "")
-						.text(msg.Value.DownloadURL);
-					$("#links").append($link);
-					$("#links").append("<br>");
-					$("#progress-bar > span").css("width", "100%")
-						.text("100%");
-					$("#go-button").prop('disabled', false);
-					break;
 				case 'link_stream':
+					clearTimeout(progTimer);
 					$("#playa").show();
 					updatePlayer(encodeURI(msg.Value.DownloadURL), msg.Value.Title, msg.Value.Artist);
 					break;
@@ -129,14 +130,18 @@ $(function(){
 						let $ru = $("<div>", {class: 'recent_url'});
 						$ru.append($("<span>", {text: artist}));
 						$ru.append($("<span>", {text: title}));
+						$ru.click(function() {
+							$(this).toggleClass("selected");
+						});
 
-						$playButton = $("#play_button_hidden svg").prop('outerHTML');
+						$playButton = $("<svg>", {version: "2.0"}).append( $("<use>", {href: "#play-btn"}) );
 						let $streamPlay = $("<div>", {class: 'stream_play', html: $playButton});
+						// 'refresh' play button content to allow SVG to display
+						$streamPlay.html($streamPlay.html());
 						$streamPlay.data("stream_url", msg.Value[i].URL);
 						$streamPlay.data("artist", artist);
 						$streamPlay.data("title", title);
 						$streamPlay.click(streamPlayClick);
-						$ru.append($link);
 						$ru.append($streamPlay);
 						$("#recent_urls").append($ru);
 					}
@@ -176,9 +181,15 @@ $(function(){
 		document.title = title + " - " + artist;
 
 		player.on('loadedmetadata',() => {
+		  	console.log("loadedmetadata");
 			let obj = JSON.parse(localStorage.getItem(url))
 			if(obj && obj.lastPlayTimeSec>0) {
+		  		console.log("seek to", obj.lastPlayTimeSec);
 				player.seek(obj.lastPlayTimeSec);
+				if( obj.playbackRate ) {
+		  			console.log("set playbackrate", obj.playbackRate);
+					player.playbackRate = obj.playbackRate;
+				}
 			}
 
 			if(seekTimer !== null ) {
@@ -193,12 +204,13 @@ $(function(){
 
 					// remove if older than 3 days
 					if(o && (new Date().getTime() - o.timestamp) > 259200 ) {
+		  				console.log("cleanup", name, new Date().getTime(), o.timestamp);
 						localStorage.removeItem(name);
 					}
 				}
 
 				// store latest play time
-				let o = {lastPlayTimeSec: player.currentTime, timestamp: new Date().getTime()}
+				let o = {lastPlayTimeSec: player.currentTime, timestamp: new Date().getTime(), playbackRate: player.playbackRate}
 				localStorage.setItem(url, JSON.stringify(o));
 			},2000);
 		});
