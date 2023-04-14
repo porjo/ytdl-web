@@ -148,7 +148,9 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}(ws.RemoteAddr)
 
 	outCh := make(chan Msg)
+	defer close(outCh)
 	errCh := make(chan error)
+	defer close(errCh)
 	go func() {
 		for {
 			select {
@@ -163,8 +165,10 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					errCh <- err
 				}
 			case err := <-errCh:
-				m := Msg{Key: "error", Value: err.Error()}
-				conn.writeMsg(m)
+				if err != nil {
+					m := Msg{Key: "error", Value: err.Error()}
+					conn.writeMsg(m)
+				}
 				return
 			}
 		}
@@ -272,7 +276,6 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 		}
 	}
 
-	close(outCh)
 	return nil
 }
 
@@ -457,12 +460,15 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				info.DownloadURL = webFileName2
 			}
 
+			m := Msg{Key: "completed", Value: "true"}
+			outCh <- m
+
 			// Send recently retrieved URLs
 			recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.Timeout)
 			if err != nil {
 				return fmt.Errorf("WS %s: GetRecentURLS err %w", ws.RemoteAddr, err)
 			}
-			m := Msg{Key: "recent", Value: recentURLs}
+			m = Msg{Key: "recent", Value: recentURLs}
 			outCh <- m
 
 			break

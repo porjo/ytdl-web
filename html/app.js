@@ -59,7 +59,6 @@ $(function(){
 		});
 
 		if( urls.length > 0 ) {
-			console.log("urls", urls);
 			var param = {delete_urls: urls};
 			ws.send(JSON.stringify(param));
 		}
@@ -83,6 +82,11 @@ $(function(){
 				case 'unknown':
 					$("#output").show();
 					$("#status").prepend(msg.Value);
+					break;
+				case 'completed':
+					$("#spinner").hide();
+					$("#output").hide();
+					clearTimeout(progTimer);
 					break;
 				case 'progress':
 					$("#output").show();
@@ -113,7 +117,6 @@ $(function(){
 					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link_stream':
-					clearTimeout(progTimer);
 					$("#playa").show();
 					updatePlayer(encodeURI(msg.Value.DownloadURL), msg.Value.Title, msg.Value.Artist);
 					break;
@@ -201,7 +204,6 @@ $(function(){
 
 					// remove if older than 3 days
 					if(o && (new Date().getTime() - o.timestamp) > 259200 ) {
-		  				console.log("cleanup", name, new Date().getTime(), o.timestamp);
 						localStorage.removeItem(name);
 					}
 				}
