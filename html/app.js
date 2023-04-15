@@ -131,8 +131,10 @@ $(function(){
 						let title = msg.Value[i].Title;
 
 						let $ru = $("<div>", {class: 'recent_url'});
-						$ru.append($("<span>", {text: artist}));
-						$ru.append($("<span>", {text: title}));
+						let $cont = $("<div>", {class: 'media_meta'});
+						$cont.append($("<span>", {class: 'media_artist', text: artist}));
+						$cont.append($("<span>", {class: 'media_title', text: title}));
+						$ru.append($cont);
 						$ru.click(function() {
 							$(this).toggleClass("selected");
 						});

@@ -287,6 +287,18 @@ label {
 	background-color: #ffead3;
 }
 
+.media_meta {
+  display: flex;
+  flex-direction: column;
+  row-gap: 5px;
+  text-align: left;
+}
+
+.media_artist {
+  font-size: 90%;
+  color: #555;
+}
+
 .stream_play svg {
 	height: 30px;
 	width: 30px;
