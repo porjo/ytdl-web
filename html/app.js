@@ -3,9 +3,9 @@ var player = null;
 
 var loc = window.location, ws_uri;
 if (loc.protocol === "https:") {
-    ws_uri = "wss:";
+	ws_uri = "wss:";
 } else {
-    ws_uri = "ws:";
+	ws_uri = "ws:";
 }
 ws_uri += "//" + loc.host;
 var path = loc.pathname.replace(/\/$/, '');
@@ -117,8 +117,10 @@ $(function(){
 					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link_stream':
-					$("#playa").show();
-					updatePlayer(encodeURI(msg.Value.DownloadURL), msg.Value.Title, msg.Value.Artist);
+					if(!isPlaying()) {
+						$("#playa").show();
+						updatePlayer(encodeURI(msg.Value.DownloadURL), msg.Value.Title, msg.Value.Artist);
+					}
 					break;
 				case 'recent':
 					if( msg.Value.length == 0 ) {
@@ -161,6 +163,13 @@ $(function(){
 		let title = $(this).data("title");
 		let artist = $(this).data("artist");
 		updatePlayer(url, title, artist, true);
+	}
+
+	function isPlaying() {
+		if(player && !player.audio.paused) {
+			return true;
+		}
+		return false
 	}
 
 	function updatePlayer(url, title, artist, autoplay=false) {
