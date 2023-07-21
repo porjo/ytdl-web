@@ -11,7 +11,6 @@ import (
 )
 
 const cleanupInterval = 30 // seconds
-const recentURLsCount = 10
 
 func main() {
 

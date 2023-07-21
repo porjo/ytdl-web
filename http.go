@@ -206,7 +206,6 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					log.Printf("Error '%s'\n", err)
 					errCh <- err
 				}
-				return
 			}()
 		} else {
 			log.Printf("unknown message type - close websocket\n")
@@ -215,7 +214,6 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("WS %s: end main loop\n", ws.RemoteAddr)
 	}
-	log.Printf("WS %s: end ServeHTTP\n", ws.RemoteAddr)
 }
 
 func (c *Conn) writeMsg(val interface{}) error {
@@ -307,15 +305,22 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			"--max-filesize", fmt.Sprintf("%d", int(MaxFileSize)),
 			// Select the worst quality format that contains audio. It may also contain video
 			"-f", "worstaudio*",
+
 			// output progress bar as newlines
 			"--newline",
 			"--progress-template", "%(progress.downloaded_bytes)s of %(progress.total_bytes)s / %(progress.total_bytes_estimate)s eta %(progress.eta)s",
+
 			// Do not use the Last-modified header to set the file modification time
 			"--no-mtime",
+
 			"--socket-timeout", fmt.Sprintf("%d", YtdlpSocketTimeoutSec),
 			"--no-playlist",
 			"-o", tmpFileName + ".%(ext)s",
 			"--embed-metadata",
+
+			// These speed up Youtube downloads: https://github.com/yt-dlp/yt-dlp/issues/7417
+			"--extractor-args", "youtube:formats=duplicate",
+			"-S", "proto:dash",
 		}
 
 		if ws.SponsorBlock {
@@ -488,7 +493,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				if time.Since(startDownload) > time.Second*5 && pct < 10 {
 					close(restartCh)
 					msg := "Restarting download...\n"
-					log.Printf(msg)
+					log.Print(msg)
 					m := Msg{Key: "unknown", Value: msg}
 					outCh <- m
 					return nil
@@ -548,7 +553,7 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 		// abort on errors except for ErrNotExist
 		if err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
-				errCh <- fmt.Errorf("Error getting stat on opus file '%s': %w", filename, err)
+				errCh <- fmt.Errorf("error getting stat on opus file '%s': %w", filename, err)
 				return
 			}
 			time.Sleep(time.Second)
@@ -613,9 +618,11 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 // HTTP chunked encoding so the client will continue to request more data until the server signals the end.
 //
 // There are a couple of challenges to overcome:
-//  - how to know when the encoding has finished? The current solution is to wait StreamSourceTimeoutSec and
+//   - how to know when the encoding has finished? The current solution is to wait StreamSourceTimeoutSec and
+//
 // end the handler if no data is copied in that time. Is that the best approach?
-//  - how to handle clients that delay requesting more data? In this case ResponseWriter blocks the Copy operation.
+//   - how to handle clients that delay requesting more data? In this case ResponseWriter blocks the Copy operation.
+//
 // I think the only solution is to set WriteTimeout on http.Sever
 func ServeStream(webRoot string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -20,7 +19,7 @@ type recent struct {
 func GetRecentURLs(ctx context.Context, webRoot, outPath string, cmdTimeout time.Duration) ([]recent, error) {
 	recentURLs := make([]recent, 0)
 
-	files, err := ioutil.ReadDir(filepath.Join(webRoot, outPath))
+	files, err := os.ReadDir(filepath.Join(webRoot, outPath))
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +34,12 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath string, cmdTimeout time
 			r := recent{}
 			r.URL = filepath.Join(outPath, file.Name())
 			r.Title, r.Artist = titleArtist(ff)
-			r.Timestamp = file.ModTime()
+			i, err := file.Info()
+			if err != nil {
+				log.Print(err)
+				continue
+			}
+			r.Timestamp = i.ModTime()
 			recentURLs = append(recentURLs, r)
 		}
 	}
@@ -68,7 +72,7 @@ func fileCleanup(outPath string, expiry time.Duration) {
 
 		// if last modification time is prior to expiry time,
 		// then delete the file
-		if time.Now().Sub(f.ModTime()) > expiry {
+		if time.Since(f.ModTime()) > expiry {
 			if err := os.Remove(path); err != nil {
 				return err
 			}
