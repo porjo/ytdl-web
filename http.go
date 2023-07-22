@@ -303,8 +303,6 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 		args := []string{
 			"--write-info-json",
 			"--max-filesize", fmt.Sprintf("%d", int(MaxFileSize)),
-			// Select the worst quality format that contains audio. It may also contain video
-			"-f", "worstaudio*",
 
 			// output progress bar as newlines
 			"--newline",
@@ -318,9 +316,13 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			"-o", tmpFileName + ".%(ext)s",
 			"--embed-metadata",
 
-			// These speed up Youtube downloads: https://github.com/yt-dlp/yt-dlp/issues/7417
+			// Select the best quality format that contains audio
+			// We then use -S sort by size selecting the smallest file (+size)
+			"-f", "bestaudio",
+			"-S", "proto:dash,+size",
+
+			// Faster youtube downloads: this combined with -S proto:dash ensures that we get dash https://github.com/yt-dlp/yt-dlp/issues/7417
 			"--extractor-args", "youtube:formats=duplicate",
-			"-S", "proto:dash",
 		}
 
 		if ws.SponsorBlock {
