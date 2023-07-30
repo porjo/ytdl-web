@@ -213,9 +213,12 @@ $(function(){
 					let name = localStorage.key(i);
 					let o = JSON.parse(localStorage.getItem(name));
 
-					// remove if older than 3 days
-					if(o && (new Date().getTime() - o.timestamp) > 259200 ) {
-						localStorage.removeItem(name);
+					if(o) {
+						let delta = new Date().getTime() - o.timestamp;
+						// remove if older than 7 days
+						if(delta > 7*86400*1000) {
+							localStorage.removeItem(name);
+						}
 					}
 				}
 
