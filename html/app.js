@@ -119,7 +119,7 @@ $(function(){
 				case 'link_stream':
 					if(!isPlaying()) {
 						$("#playa").show();
-						updatePlayer(encodeURI(msg.Value.DownloadURL), msg.Value.Title, msg.Value.Artist);
+						updatePlayer(msg.Value.DownloadURL, msg.Value.Title, msg.Value.Artist);
 					}
 					break;
 				case 'recent':
@@ -192,10 +192,11 @@ $(function(){
 			});
 		}
 
-		document.title = title + " - " + artist;
+		let id = title + " - " + artist;
+		document.title = id;
 
 		player.on('loadedmetadata',() => {
-			let obj = JSON.parse(localStorage.getItem(url))
+			let obj = JSON.parse(localStorage.getItem(id))
 			if(obj && obj.lastPlayTimeSec>0) {
 				player.seek(obj.lastPlayTimeSec);
 				if( obj.playbackRate ) {
@@ -224,7 +225,7 @@ $(function(){
 
 				// store latest play time
 				let o = {lastPlayTimeSec: player.currentTime, timestamp: new Date().getTime(), playbackRate: player.playbackRate}
-				localStorage.setItem(url, JSON.stringify(o));
+				localStorage.setItem(id, JSON.stringify(o));
 			},2000);
 		});
 
