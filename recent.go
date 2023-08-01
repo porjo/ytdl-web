@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const cleanupInterval = 30 * time.Second
+
 type recent struct {
 	URL       string
 	Artist    string
@@ -81,7 +83,7 @@ func fileCleanup(outPath string, expiry time.Duration) {
 		return nil
 	}
 
-	tickChan := time.NewTicker(time.Second * cleanupInterval).C
+	tickChan := time.NewTicker(cleanupInterval).C
 
 	for _ = range tickChan {
 		err := filepath.Walk(outPath, visit)

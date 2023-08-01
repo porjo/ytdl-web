@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -279,9 +278,6 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 
 func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh chan bool, url *url.URL) error {
 
-	webFileName := ws.OutPath + "/ytdl-"
-	diskFileName := filepath.Join(ws.WebRoot, webFileName)
-
 	forceOpus := false
 
 	if !strings.Contains(url.Host, "youtube.com") {
@@ -296,7 +292,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 	// filename is md5 sum of URL
 	urlSum := md5.Sum([]byte(url.String()))
-	tmpFileName := diskFileName + fmt.Sprintf("%x", urlSum)
+	diskFileNameTmp := filepath.Join(ws.WebRoot, ws.OutPath, "t", "ytdl-"+fmt.Sprintf("%x", urlSum))
 
 	go func() {
 		log.Printf("Fetching url %s\n", url.String())
@@ -313,7 +309,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 			"--socket-timeout", fmt.Sprintf("%d", YtdlpSocketTimeoutSec),
 			"--no-playlist",
-			"-o", tmpFileName + ".%(ext)s",
+			"-o", diskFileNameTmp + ".%(ext)s",
 			"--embed-metadata",
 
 			// Select the best quality format that contains audio
@@ -375,13 +371,13 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			return fmt.Errorf("waited too long for info file")
 		}
 
-		infoFileName := tmpFileName + ".info.json"
+		infoFileName := diskFileNameTmp + ".info.json"
 
 		time.Sleep(500 * time.Millisecond)
 		if _, err := os.Stat(infoFileName); os.IsNotExist(err) {
 			continue
 		}
-		raw, err := ioutil.ReadFile(infoFileName)
+		raw, err := os.ReadFile(infoFileName)
 		if err != nil {
 			return fmt.Errorf("info file read error: %s", err)
 		}
@@ -400,7 +396,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 	// output size of opus file as it gets written
 	if forceOpus {
-		go getOpusFileSize(tCtx, info, outCh, errCh, tmpFileName+".opus", ws.OutPath)
+		go getOpusFileSize(tCtx, info, outCh, errCh, diskFileNameTmp+".opus", ws.OutPath)
 	}
 
 	var startDownload time.Time
@@ -419,9 +415,9 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			}
 			if badTitleRegexp.MatchString(info.Title) {
 				log.Println("Fetching title from media file metadata")
-				filename := tmpFileName + "." + info.Extension
+				filename := diskFileNameTmp + "." + info.Extension
 				if forceOpus {
-					filename = tmpFileName + ".opus"
+					filename = diskFileNameTmp + ".opus"
 				}
 
 				ff, err := runFFprobe(ctx, FFprobeCmd, filename, ws.Timeout)
@@ -433,16 +429,16 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
 			sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
 			sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
-			webFileName += sanitizedTitle
 
-			finalFileName := diskFileName + sanitizedTitle + "." + info.Extension
-			tmpFileName2 := tmpFileName + "." + info.Extension
+			finalFileNameNoExt := filepath.Join(ws.WebRoot, ws.OutPath, "ytdl-"+sanitizedTitle)
+			finalFileName := finalFileNameNoExt + "." + info.Extension
+			diskFileNameTmp2 := diskFileNameTmp + "." + info.Extension
 			if forceOpus {
 				// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
-				finalFileName = diskFileName + sanitizedTitle + ".oga"
-				tmpFileName2 = tmpFileName + ".opus"
+				finalFileName = finalFileNameNoExt + ".oga"
+				diskFileNameTmp2 = diskFileNameTmp + ".opus"
 
-				fi, err := os.Stat(tmpFileName2)
+				fi, err := os.Stat(diskFileNameTmp2)
 				if err != nil {
 					return err
 				}
@@ -452,19 +448,17 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				}
 				outCh <- m
 			}
-			err := os.Rename(tmpFileName2, finalFileName)
+			err := os.Rename(diskFileNameTmp2, finalFileName)
 			if err != nil {
 				return err
 			}
 			// if we got here, then command completed successfully
 			if forceOpus {
-				info.DownloadURL = webFileName + ".oga"
+				info.DownloadURL = filepath.Join(ws.OutPath, filepath.Base(finalFileNameNoExt)) + ".oga"
 			} else {
-				webFileName2 := webFileName + "." + info.Extension
-				info.DownloadURL = filepath.Join(ws.OutPath, filepath.Base(webFileName2))
+				info.DownloadURL = filepath.Join(ws.OutPath, filepath.Base(finalFileName))
 				m := Msg{Key: "link_stream", Value: info}
 				outCh <- m
-				info.DownloadURL = webFileName2
 			}
 
 			m := Msg{Key: "completed", Value: "true"}
@@ -572,7 +566,7 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 			}
 			ffprobeRan = true
 			info.Title, info.Artist = titleArtist(ff)
-			info.DownloadURL = filepath.Join(webPath, "stream", filepath.Base(filename))
+			info.DownloadURL = filepath.Join(webPath, "stream", "t", filepath.Base(filename))
 			m := Msg{Key: "link_stream", Value: info}
 			outCh <- m
 		}

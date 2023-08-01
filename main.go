@@ -6,11 +6,10 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 )
-
-const cleanupInterval = 30 // seconds
 
 func main() {
 
@@ -25,11 +24,18 @@ func main() {
 	port := flag.Int("port", 8080, "listen on this port")
 	flag.Parse()
 
+	outPathFull := filepath.Join(*webRoot, *outPath)
+
 	log.Printf("Starting ytdl-web...\n")
 	log.Printf("Set web root: %s\n", *webRoot)
 	log.Printf("Set process timeout: %d sec\n", *timeout)
-	log.Printf("Set output path: %s\n", *webRoot+"/"+*outPath)
+	log.Printf("Set output path: %s\n", outPathFull)
 	log.Printf("Set content expiry: %d sec\n", *expiry)
+
+	// create tmp dir
+	if err := os.MkdirAll(filepath.Join(outPathFull, "t"), os.ModePerm); err != nil {
+		log.Fatal(err)
+	}
 
 	err := mime.AddExtensionType(".oga", "audio/ogg")
 	if err != nil {

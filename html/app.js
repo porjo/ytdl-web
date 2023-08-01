@@ -14,7 +14,6 @@ ws_uri += path + "/websocket";
 var progTimer = null;
 var progLast = null;
 var seekTimer = null;
-var cleanupTimer = null;
 
 $(function(){
 	var ws = new WebSocket(ws_uri);
@@ -243,19 +242,17 @@ $(function(){
 	});
 
 	// cleanup storage
-	cleanupTimer = setInterval(() => {
-		for (let i = 0; i < localStorage.length; i++) {
-			let name = localStorage.key(i);
-			let o = JSON.parse(localStorage.getItem(name));
+	for (let i = 0; i < localStorage.length; i++) {
+		let name = localStorage.key(i);
+		let o = JSON.parse(localStorage.getItem(name));
 
-			if(o) {
-				let delta = new Date().getTime() - o.timestamp;
-				// remove if older than 7 days
-				if(delta > 7*86400*1000) {
-					localStorage.removeItem(name);
-				}
+		if(o) {
+			let delta = new Date().getTime() - o.timestamp;
+			// remove if older than 7 days
+			if(delta > 7*86400*1000) {
+				localStorage.removeItem(name);
 			}
 		}
-	},10000);
+	}
 
 });

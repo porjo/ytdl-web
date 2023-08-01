@@ -28,4 +28,4 @@ COPY --from=build-env /go/src/github.com/porjo/ytdl-web/ /app/ytdl-web
 RUN chmod a+rx entrypoint.sh
 
 ENTRYPOINT ["/app/ytdl-web/entrypoint.sh"]
-CMD ["-cmd", "/usr/local/bin/yt-dlp", "-sponsorBlock"]
+CMD ["/app/ytdl-web/ytdl-web", "-cmd", "/usr/local/bin/yt-dlp", "-sponsorBlock"]
