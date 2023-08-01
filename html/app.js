@@ -192,7 +192,7 @@ $(function(){
 			});
 		}
 
-		let id = title + " - " + artist;
+		let id = "ytdl-" + title + " - " + artist;
 		document.title = id;
 
 		player.on('loadedmetadata',() => {
@@ -244,6 +244,9 @@ $(function(){
 	// cleanup storage
 	for (let i = 0; i < localStorage.length; i++) {
 		let name = localStorage.key(i);
+		if( !name.startsWith("ytdl-")) {
+			continue
+		}
 		let o = JSON.parse(localStorage.getItem(name));
 
 		if(o) {
