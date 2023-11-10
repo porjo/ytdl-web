@@ -312,10 +312,11 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			"-o", diskFileNameTmp + ".%(ext)s",
 			"--embed-metadata",
 
-			// Select the best quality format that contains audio
-			// We then use -S sort by size selecting the smallest file (+size)
-			"-f", "bestaudio",
-			"-S", "proto:dash,+size",
+			// extract audio
+			"-x",
+			// proto:dash is needed for fast Youtube downloads
+			// sort by size, bitrate in ascending order
+			"-S", "proto:dash,+size,+br",
 
 			// Faster youtube downloads: this combined with -S proto:dash ensures that we get dash https://github.com/yt-dlp/yt-dlp/issues/7417
 			"--extractor-args", "youtube:formats=duplicate",
@@ -330,8 +331,6 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			args = append(args, []string{
 				"--audio-format", "opus",
 				"--audio-quality", "32K",
-				// extract audio
-				"-x",
 				//	"--postprocessor-args", `ExtractAudio:-compression_level 0`,  // fastest, lowest quality compression
 			}...)
 		}
