@@ -278,10 +278,10 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 
 func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh chan bool, url *url.URL) error {
 
-	forceOpus := false
+	forceOpus := true
 
-	if !strings.Contains(url.Host, "youtube.com") {
-		forceOpus = true
+	if strings.Contains(url.Host, "youtube.com") || strings.Contains(url.Host, "twitter.com") {
+		forceOpus = false
 	}
 
 	tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)

@@ -136,10 +136,10 @@ $(function(){
 						let $cont = $("<div>", {class: 'media_meta'});
 						$cont.append($("<span>", {class: 'media_artist', text: artist}));
 						$cont.append($("<span>", {class: 'media_title', text: title}));
-						$ru.append($cont);
-						$ru.click(function() {
-							$(this).toggleClass("selected");
+						$cont.click(function() {
+							$(this).closest(".recent_url").toggleClass("selected");
 						});
+						$ru.append($cont);
 
 						$playButton = $("<svg>", {version: "2.0"}).append( $("<use>", {href: "#play-btn"}) );
 						let $streamPlay = $("<div>", {class: 'stream_play', html: $playButton});
