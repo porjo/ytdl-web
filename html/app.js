@@ -15,6 +15,8 @@ var progTimer = null;
 var progLast = null;
 var seekTimer = null;
 
+var trackId = null;
+
 $(function(){
 	var ws = new WebSocket(ws_uri);
 
@@ -26,9 +28,10 @@ $(function(){
 	}
 
 	$("#url").on('paste', function(e) {
-		var data = e.originalEvent.clipboardData.getData('Text');
+		let data = e.originalEvent.clipboardData.getData('Text');
 		searchParams.set('url', encodeURI(data));
-		window.location.search = searchParams;
+		url.search = searchParams;
+		window.history.pushState('newUrl', '', url);
 	});
 
 	$("#go-button").click(function() {
@@ -37,8 +40,8 @@ $(function(){
 			$("#input-form").hide();
 			$("#progress-bar > span").css("width", "0%")
 				.text("0%");
-			var url = $("#url").val();
-			var val = {URL: url};
+			let url = $("#url").val();
+			let val = {URL: url};
 			ws.send(JSON.stringify(val));
 			$("#status").prepend("Requesting URL " + url + "\n");
 			$(this).prop('disabled', true);
@@ -59,7 +62,7 @@ $(function(){
 		});
 
 		if( urls.length > 0 ) {
-			var param = {delete_urls: urls};
+			let param = {delete_urls: urls};
 			ws.send(JSON.stringify(param));
 		}
 	});
@@ -71,7 +74,7 @@ $(function(){
 	*/
 
 	ws.onmessage = function (e)	{
-		var msg = JSON.parse(e.data);
+		let msg = JSON.parse(e.data);
 		if( 'Key' in msg ) {
 			switch (msg.Key) {
 				case 'error':
@@ -102,7 +105,7 @@ $(function(){
 							}
 						},1000);
 					}
-					var pct = parseFloat(msg.Value.Pct);
+					let pct = parseFloat(msg.Value.Pct);
 					$("#progress-bar > span").css("width", pct + "%")
 						.text(pct + "%");
 					$("#eta").text( msg.Value.ETA );
@@ -113,7 +116,7 @@ $(function(){
 				case 'info':
 					$("#output").show();
 					$("#title").text( msg.Value.Title );
-					var bytes = parseFloat(msg.Value.FileSize)
+					let bytes = parseFloat(msg.Value.FileSize)
 					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link_stream':
@@ -192,11 +195,11 @@ $(function(){
 			});
 		}
 
-		let id = "ytdl-" + title + " - " + artist;
-		document.title = id;
+		trackId = "ytdl-" + title + " - " + artist;
+		document.title = trackId;
 
-		player.on('loadedmetadata',() => {
-			let obj = JSON.parse(localStorage.getItem(id))
+		player.on('loadedmetadata',(e) => {
+			let obj = JSON.parse(localStorage.getItem(trackId))
 			if(obj && obj.lastPlayTimeSec>0) {
 				player.seek(obj.lastPlayTimeSec);
 				if( obj.playbackRate ) {
@@ -212,7 +215,7 @@ $(function(){
 			seekTimer = setInterval(() => {
 				if(isPlaying()) {
 					let o = {lastPlayTimeSec: player.currentTime, timestamp: new Date().getTime(), playbackRate: player.playbackRate}
-					localStorage.setItem(id, JSON.stringify(o));
+					localStorage.setItem(trackId, JSON.stringify(o));
 				}
 			},2000);
 		});
