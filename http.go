@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/json"
@@ -61,7 +62,7 @@ var filenameReplacer = strings.NewReplacer(
 
 // remove all remaining non-allowed characters
 var filenameRegexp = regexp.MustCompile("[^0-9A-Za-z_. +,-]+")
-var badTitleRegexp = regexp.MustCompile("[0-9A-Fa-f_-]+")
+var hexTitleRegexp = regexp.MustCompile("^[0-9A-Fa-f_-]+$")
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -314,6 +315,9 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 			// extract audio
 			"-x",
+			// print final output filename (after postprocessing etc)
+			"--print-to-file", "after_move:filepath", diskFileNameTmp + ".ext",
+
 			// proto:dash is needed for fast Youtube downloads
 			// sort by size, bitrate in ascending order
 			"-S", "proto:dash,+size,+br",
@@ -409,10 +413,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 		line, open := <-cmdOutCh
 		if !open {
-			if info.Title == "" {
-				return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
-			}
-			if badTitleRegexp.MatchString(info.Title) {
+			if hexTitleRegexp.MatchString(info.Title) {
 				log.Println("Fetching title from media file metadata")
 				filename := diskFileNameTmp + "." + info.Extension
 				if forceOpus {
@@ -425,18 +426,39 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				}
 				info.Title, info.Artist = titleArtist(ff)
 			}
+			if info.Title == "" {
+				return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
+			}
+
+			if info.Artist == "" {
+				info.Artist = "unknown"
+			}
 			sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
 			sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
 			sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
 
 			finalFileNameNoExt := filepath.Join(ws.WebRoot, ws.OutPath, "ytdl-"+sanitizedTitle)
-			finalFileName := finalFileNameNoExt + "." + info.Extension
-			diskFileNameTmp2 := diskFileNameTmp + "." + info.Extension
-			if forceOpus {
-				// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
-				finalFileName = finalFileNameNoExt + ".oga"
-				diskFileNameTmp2 = diskFileNameTmp + ".opus"
 
+			// yt-dlp writes it's final output filename to a temporary file. Read that back
+			diskFileNameTmp2b, err := os.ReadFile(diskFileNameTmp + ".ext")
+			if err != nil {
+				return err
+			}
+			diskFileNameTmp2 := strings.TrimSpace(string(diskFileNameTmp2b))
+			// read the first line
+			idx := bytes.Index(diskFileNameTmp2b, []byte{'\n'})
+			if idx > 0 {
+				diskFileNameTmp2 = string(diskFileNameTmp2b[:idx])
+			}
+
+			ext := path.Ext(diskFileNameTmp2)
+			// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
+			if ext == ".opus" {
+				ext = ".oga"
+			}
+			finalFileName := finalFileNameNoExt + ext
+
+			if forceOpus {
 				fi, err := os.Stat(diskFileNameTmp2)
 				if err != nil {
 					return err
@@ -447,7 +469,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 				}
 				outCh <- m
 			}
-			err := os.Rename(diskFileNameTmp2, finalFileName)
+			err = os.Rename(diskFileNameTmp2, finalFileName)
 			if err != nil {
 				return err
 			}
