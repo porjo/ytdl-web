@@ -62,7 +62,6 @@ var filenameReplacer = strings.NewReplacer(
 
 // remove all remaining non-allowed characters
 var filenameRegexp = regexp.MustCompile("[^0-9A-Za-z_. +,-]+")
-var hexTitleRegexp = regexp.MustCompile("^[0-9A-Fa-f_-]+$")
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -413,31 +412,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 		line, open := <-cmdOutCh
 		if !open {
-			if hexTitleRegexp.MatchString(info.Title) {
-				log.Println("Fetching title from media file metadata")
-				filename := diskFileNameTmp + "." + info.Extension
-				if forceOpus {
-					filename = diskFileNameTmp + ".opus"
-				}
-
-				ff, err := runFFprobe(ctx, FFprobeCmd, filename, ws.Timeout)
-				if err != nil {
-					return err
-				}
-				info.Title, info.Artist = titleArtist(ff)
-			}
-			if info.Title == "" {
-				return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
-			}
-
-			if info.Artist == "" {
-				info.Artist = "unknown"
-			}
-			sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
-			sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
-			sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
-
-			finalFileNameNoExt := filepath.Join(ws.WebRoot, ws.OutPath, "ytdl-"+sanitizedTitle)
+			// if we got here, then command completed successfully
 
 			// yt-dlp writes it's final output filename to a temporary file. Read that back
 			diskFileNameTmp2b, err := os.ReadFile(diskFileNameTmp + ".ext")
@@ -450,6 +425,31 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			if idx > 0 {
 				diskFileNameTmp2 = string(diskFileNameTmp2b[:idx])
 			}
+
+			log.Println("Fetching title from media file metadata")
+			filename := diskFileNameTmp + "." + info.Extension
+			if forceOpus {
+				filename = diskFileNameTmp + ".opus"
+			}
+
+			ff, err := runFFprobe(ctx, FFprobeCmd, filename, ws.Timeout)
+			if err != nil {
+				return err
+			}
+			info.Title, info.Artist = titleArtist(ff)
+
+			if info.Title == "" {
+				return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
+			}
+
+			if info.Artist == "" {
+				info.Artist = "unknown"
+			}
+			sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
+			sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
+			sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
+
+			finalFileNameNoExt := filepath.Join(ws.WebRoot, ws.OutPath, "ytdl-"+sanitizedTitle)
 
 			ext := path.Ext(diskFileNameTmp2)
 			// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
@@ -473,11 +473,10 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			if err != nil {
 				return err
 			}
-			// if we got here, then command completed successfully
-			if forceOpus {
-				info.DownloadURL = filepath.Join(ws.OutPath, filepath.Base(finalFileNameNoExt)) + ".oga"
-			} else {
-				info.DownloadURL = filepath.Join(ws.OutPath, filepath.Base(finalFileName))
+
+			info.DownloadURL = filepath.Join(ws.OutPath, filepath.Base(finalFileName))
+			// don't send link for forceOpus as that's handled in getOpusFileSize goroutine
+			if !forceOpus {
 				m := Msg{Key: "link_stream", Value: info}
 				outCh <- m
 			}
