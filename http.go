@@ -288,86 +288,62 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 	defer cancel()
 
 	errCh := make(chan error)
-	cmdOutCh := make(chan string, 10)
+	defer close(errCh)
 
 	// filename is md5 sum of URL
 	urlSum := md5.Sum([]byte(url.String()))
 	diskFileNameTmp := filepath.Join(ws.WebRoot, ws.OutPath, "t", "ytdl-"+fmt.Sprintf("%x", urlSum))
 
-	go func() {
-		log.Printf("Fetching url %s\n", url.String())
-		args := []string{
-			"--write-info-json",
-			"--max-filesize", fmt.Sprintf("%d", int(MaxFileSize)),
+	log.Printf("Fetching url %s\n", url.String())
+	args := []string{
+		"--write-info-json",
+		"--max-filesize", fmt.Sprintf("%d", int(MaxFileSize)),
 
-			// output progress bar as newlines
-			"--newline",
-			"--progress-template", "%(progress.downloaded_bytes)s of %(progress.total_bytes)s / %(progress.total_bytes_estimate)s eta %(progress.eta)s",
+		// output progress bar as newlines
+		"--newline",
+		"--progress-template", "%(progress.downloaded_bytes)s of %(progress.total_bytes)s / %(progress.total_bytes_estimate)s eta %(progress.eta)s",
 
-			// Do not use the Last-modified header to set the file modification time
-			"--no-mtime",
+		// Do not use the Last-modified header to set the file modification time
+		"--no-mtime",
 
-			"--socket-timeout", fmt.Sprintf("%d", YtdlpSocketTimeoutSec),
-			"--no-playlist",
-			"-o", diskFileNameTmp + ".%(ext)s",
-			"--embed-metadata",
+		"--socket-timeout", fmt.Sprintf("%d", YtdlpSocketTimeoutSec),
+		"--no-playlist",
+		"-o", diskFileNameTmp + ".%(ext)s",
+		"--embed-metadata",
 
-			// extract audio
-			"-x",
-			// print final output filename (after postprocessing etc)
-			"--print-to-file", "after_move:filepath", diskFileNameTmp + ".ext",
+		// extract audio
+		"-x",
+		// print final output filename (after postprocessing etc)
+		"--print-to-file", "after_move:filepath", diskFileNameTmp + ".ext",
 
-			// proto:dash is needed for fast Youtube downloads
-			// sort by size, bitrate in ascending order
-			"-S", "proto:dash,+size,+br",
+		// proto:dash is needed for fast Youtube downloads
+		// sort by size, bitrate in ascending order
+		"-S", "proto:dash,+size,+br",
 
-			// Faster youtube downloads: this combined with -S proto:dash ensures that we get dash https://github.com/yt-dlp/yt-dlp/issues/7417
-			"--extractor-args", "youtube:formats=duplicate",
-		}
+		// Faster youtube downloads: this combined with -S proto:dash ensures that we get dash https://github.com/yt-dlp/yt-dlp/issues/7417
+		"--extractor-args", "youtube:formats=duplicate",
+	}
 
-		if ws.SponsorBlock {
-			args = append(args, []string{
-				"--sponsorblock-remove", ws.SponsorBlockCats,
-			}...)
-		}
-		if forceOpus {
-			args = append(args, []string{
-				"--audio-format", "opus",
-				"--audio-quality", "32K",
-				//	"--postprocessor-args", `ExtractAudio:-compression_level 0`,  // fastest, lowest quality compression
-			}...)
-		}
-		args = append(args, url.String())
+	if ws.SponsorBlock {
+		args = append(args, []string{
+			"--sponsorblock-remove", ws.SponsorBlockCats,
+		}...)
+	}
+	if forceOpus {
+		args = append(args, []string{
+			"--audio-format", "opus",
+			"--audio-quality", "32K",
+			//	"--postprocessor-args", `ExtractAudio:-compression_level 0`,  // fastest, lowest quality compression
+		}...)
+	}
+	args = append(args, url.String())
 
-		log.Printf("Running command %v\n", append([]string{YTCmd}, args...))
-		err := RunCommandCh(tCtx, cmdOutCh, YTCmd, args...)
-		if err != nil {
-		loop:
-			// read any messages on cmdOutCh, then send error
-			for {
-				select {
-				case line := <-cmdOutCh:
-					m := Msg{Key: "unknown", Value: line}
-					outCh <- m
-				default:
-					break loop
-				}
-			}
-			errCh <- err
-		}
-		// close cmd output channel to signal that command has finished
-		close(cmdOutCh)
-	}()
+	log.Printf("Running command %v\n", append([]string{YTCmd}, args...))
+	cmdOutCh := RunCommandCh(tCtx, errCh, YTCmd, args...)
 
 	var info Info
 	count := 0
 	for {
-		select {
-		case err := <-errCh:
-			return err
-		default:
-		}
-
 		count++
 		if count > 20 {
 			return fmt.Errorf("waited too long for info file")
@@ -403,129 +379,131 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 
 	var startDownload time.Time
 	lastOut := time.Now()
+	var line string
+	var open bool
+loop:
 	for {
 		select {
 		case err := <-errCh:
 			return err
-		default:
-		}
-
-		line, open := <-cmdOutCh
-		if !open {
-			// if we got here, then command completed successfully
-
-			// yt-dlp writes it's final output filename to a temporary file. Read that back
-			diskFileNameTmp2b, err := os.ReadFile(diskFileNameTmp + ".ext")
-			if err != nil {
-				return err
+		case line, open = <-cmdOutCh:
+			if !open {
+				break loop
 			}
-			diskFileNameTmp2 := strings.TrimSpace(string(diskFileNameTmp2b))
-			// read the first line
-			idx := bytes.Index(diskFileNameTmp2b, []byte{'\n'})
-			if idx > 0 {
-				diskFileNameTmp2 = string(diskFileNameTmp2b[:idx])
-			}
+			//fmt.Println(line)
 
-			log.Println("Fetching title from media file metadata")
-			filename := diskFileNameTmp + "." + info.Extension
-			if forceOpus {
-				filename = diskFileNameTmp + ".opus"
-			}
-
-			ff, err := runFFprobe(ctx, FFprobeCmd, filename, ws.Timeout)
-			if err != nil {
-				return err
-			}
-			info.Title, info.Artist = titleArtist(ff)
-
-			if info.Title == "" {
-				return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
-			}
-
-			if info.Artist == "" {
-				info.Artist = "unknown"
-			}
-			sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
-			sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
-			sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
-
-			finalFileNameNoExt := filepath.Join(ws.WebRoot, ws.OutPath, "ytdl-"+sanitizedTitle)
-
-			ext := path.Ext(diskFileNameTmp2)
-			// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
-			if ext == ".opus" {
-				ext = ".oga"
-			}
-			finalFileName := finalFileNameNoExt + ext
-
-			if forceOpus {
-				fi, err := os.Stat(diskFileNameTmp2)
+			p := getYTProgress(line)
+			if p != nil {
+				if startDownload.IsZero() {
+					startDownload = time.Now()
+				}
+				pct, err := strconv.ParseFloat(p.Pct, 64)
 				if err != nil {
 					return err
 				}
-				m := Msg{
-					Key:   "unknown",
-					Value: fmt.Sprintf("opus file size %.2f MB\n", float32(fi.Size())*1e-6),
+				if restartCh != nil {
+					if time.Since(startDownload) > time.Second*5 && pct < 10 {
+						close(restartCh)
+						msg := "Restarting download...\n"
+						log.Print(msg)
+						m := Msg{Key: "unknown", Value: msg}
+						outCh <- m
+						return nil
+					}
 				}
-				outCh <- m
-			}
-			err = os.Rename(diskFileNameTmp2, finalFileName)
-			if err != nil {
-				return err
-			}
 
-			info.DownloadURL = filepath.Join(ws.OutPath, filepath.Base(finalFileName))
-			// don't send link for forceOpus as that's handled in getOpusFileSize goroutine
-			if !forceOpus {
-				m := Msg{Key: "link_stream", Value: info}
-				outCh <- m
-			}
-
-			m := Msg{Key: "completed", Value: "true"}
-			outCh <- m
-
-			// Send recently retrieved URLs
-			recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.Timeout)
-			if err != nil {
-				return fmt.Errorf("WS %s: GetRecentURLS err %w", ws.RemoteAddr, err)
-			}
-			m = Msg{Key: "recent", Value: recentURLs}
-			outCh <- m
-
-			break
-		}
-		//fmt.Println(line)
-
-		p := getYTProgress(line)
-		if p != nil {
-			if startDownload.IsZero() {
-				startDownload = time.Now()
-			}
-			pct, err := strconv.ParseFloat(p.Pct, 64)
-			if err != nil {
-				return err
-			}
-			if restartCh != nil {
-				if time.Since(startDownload) > time.Second*5 && pct < 10 {
-					close(restartCh)
-					msg := "Restarting download...\n"
-					log.Print(msg)
-					m := Msg{Key: "unknown", Value: msg}
+				if time.Since(lastOut) > 500*time.Millisecond {
+					m := Msg{Key: "progress", Value: *p}
 					outCh <- m
-					return nil
+					lastOut = time.Now()
 				}
-			}
-
-			if time.Since(lastOut) > 500*time.Millisecond {
-				m := Msg{Key: "progress", Value: *p}
+			} else {
+				m := Msg{Key: "unknown", Value: line}
 				outCh <- m
-				lastOut = time.Now()
 			}
-		} else {
-			m := Msg{Key: "unknown", Value: line}
-			outCh <- m
 		}
 	}
+
+	// if we got here, then command completed successfully
+
+	// yt-dlp writes it's final output filename to a temporary file. Read that back
+	diskFileNameTmp2b, err := os.ReadFile(diskFileNameTmp + ".ext")
+	if err != nil {
+		return err
+	}
+	diskFileNameTmp2 := strings.TrimSpace(string(diskFileNameTmp2b))
+	// read the first line
+	idx := bytes.Index(diskFileNameTmp2b, []byte{'\n'})
+	if idx > 0 {
+		diskFileNameTmp2 = string(diskFileNameTmp2b[:idx])
+	}
+
+	log.Println("Fetching title from media file metadata")
+	filename := diskFileNameTmp + "." + info.Extension
+	if forceOpus {
+		filename = diskFileNameTmp + ".opus"
+	}
+
+	ff, err := runFFprobe(ctx, FFprobeCmd, filename, ws.Timeout)
+	if err != nil {
+		return err
+	}
+	info.Title, info.Artist = titleArtist(ff)
+
+	if info.Title == "" {
+		return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
+	}
+
+	if info.Artist == "" {
+		info.Artist = "unknown"
+	}
+	sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
+	sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
+	sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
+
+	finalFileNameNoExt := filepath.Join(ws.WebRoot, ws.OutPath, "ytdl-"+sanitizedTitle)
+
+	ext := path.Ext(diskFileNameTmp2)
+	// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
+	if ext == ".opus" {
+		ext = ".oga"
+	}
+	finalFileName := finalFileNameNoExt + ext
+
+	if forceOpus {
+		fi, err := os.Stat(diskFileNameTmp2)
+		if err != nil {
+			return err
+		}
+		m := Msg{
+			Key:   "unknown",
+			Value: fmt.Sprintf("opus file size %.2f MB\n", float32(fi.Size())*1e-6),
+		}
+		outCh <- m
+	}
+	log.Printf("rename %s to %s", diskFileNameTmp2, finalFileName)
+	err = os.Rename(diskFileNameTmp2, finalFileName)
+	if err != nil {
+		return err
+	}
+
+	info.DownloadURL = filepath.Join(ws.OutPath, filepath.Base(finalFileName))
+	// don't send link for forceOpus as that's handled in getOpusFileSize goroutine
+	if !forceOpus {
+		m := Msg{Key: "link_stream", Value: info}
+		outCh <- m
+	}
+
+	m := Msg{Key: "completed", Value: "true"}
+	outCh <- m
+
+	// Send recently retrieved URLs
+	recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.Timeout)
+	if err != nil {
+		return fmt.Errorf("WS %s: GetRecentURLS err %w", ws.RemoteAddr, err)
+	}
+	m = Msg{Key: "recent", Value: recentURLs}
+	outCh <- m
 
 	return nil
 }
