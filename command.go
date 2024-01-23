@@ -26,7 +26,7 @@ func RunCommand(ctx context.Context, command string, flags ...string) ([]byte, e
 	return out, err
 }
 
-func RunCommandCh(ctx context.Context, errCh chan error, command string, flags ...string) chan string {
+func RunCommandCh(ctx context.Context, command string, flags ...string) (chan string, chan error) {
 	r, w := io.Pipe()
 	cmd := exec.CommandContext(ctx, command, flags...)
 	// set process group so that children can be killed
@@ -35,6 +35,7 @@ func RunCommandCh(ctx context.Context, errCh chan error, command string, flags .
 	cmd.Stderr = w
 	stdout := bufio.NewReader(r)
 	outCh := make(chan string, 0)
+	errCh := make(chan error, 0)
 	go func() {
 		for {
 			line, err := stdout.ReadString('\n')
@@ -49,6 +50,7 @@ func RunCommandCh(ctx context.Context, errCh chan error, command string, flags .
 	}()
 	go func() {
 		defer close(outCh)
+		defer close(errCh)
 		err := cmd.Run()
 		if err != nil {
 			errCh <- err
@@ -57,5 +59,5 @@ func RunCommandCh(ctx context.Context, errCh chan error, command string, flags .
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	}()
 
-	return outCh
+	return outCh, errCh
 }

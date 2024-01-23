@@ -125,10 +125,14 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// wrap Gorilla conn with our conn so we can extend functionality
 	conn := Conn{sync.Mutex{}, gconn}
 
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
 	// setup ping/pong to keep connection open
 	go func(remoteAddr string) {
 		ticker := time.NewTicker(WSPingIntervalSec)
 		defer ticker.Stop()
+		defer wg.Done()
 
 		for {
 			select {
@@ -150,7 +154,12 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer close(outCh)
 	errCh := make(chan error)
 	defer close(errCh)
+	// wait for goroutines to return before closing channels (defers are last in first out)
+	defer wg.Wait()
+
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-ctx.Done():
@@ -192,7 +201,9 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Printf("WS %s: read message %s\n", ws.RemoteAddr, string(raw))
 
 		if msgType == websocket.TextMessage {
+			wg.Add(1)
 			go func() {
+				defer wg.Done()
 				var req Request
 				err = json.Unmarshal(raw, &req)
 				if err != nil {
@@ -339,7 +350,7 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 	args = append(args, url.String())
 
 	log.Printf("Running command %v\n", append([]string{YTCmd}, args...))
-	cmdOutCh := RunCommandCh(tCtx, errCh, YTCmd, args...)
+	cmdOutCh, cmdErrCh := RunCommandCh(tCtx, YTCmd, args...)
 
 	var info Info
 	count := 0
@@ -385,6 +396,8 @@ loop:
 	for {
 		select {
 		case err := <-errCh:
+			return err
+		case err := <-cmdErrCh:
 			return err
 		case line, open = <-cmdOutCh:
 			if !open {
