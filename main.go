@@ -65,7 +65,7 @@ func main() {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		ReadTimeout:  5 * time.Second,
-		WriteTimeout: HTTPWriteTimeoutSec,
+		WriteTimeout: HTTPWriteTimeout,
 	}
 	err = srv.ListenAndServe()
 	if err != nil {

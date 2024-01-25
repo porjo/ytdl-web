@@ -34,14 +34,14 @@ const DefaultProcessTimeoutSec = 300
 const ClientJobs = 5
 
 // timeout opus stream if no new data read from file in this time
-const StreamSourceTimeoutSec = 30 * time.Second
+const StreamSourceTimeout = 30 * time.Second
 
 // FIXME: need a better way of detecting and timing out slow clients
 // http response deadline (slow reading clients)
-const HTTPWriteTimeoutSec = 1800 * time.Second
+const HTTPWriteTimeout = 1800 * time.Second
 
-const WSPingIntervalSec = 10 * time.Second
-const WSWriteWaitSec = 2 * time.Second
+const WSPingInterval = 10 * time.Second
+const WSWriteWait = 2 * time.Second
 
 const YtdlpSocketTimeoutSec = 10
 
@@ -130,7 +130,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	// setup ping/pong to keep connection open
 	go func(remoteAddr string) {
-		ticker := time.NewTicker(WSPingIntervalSec)
+		ticker := time.NewTicker(WSPingInterval)
 		defer ticker.Stop()
 		defer wg.Done()
 
@@ -141,7 +141,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			case <-ticker.C:
 				// WriteControl can be called concurrently
-				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WSWriteWaitSec)); err != nil {
+				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WSWriteWait)); err != nil {
 					log.Printf("WS %s: ping client, err %s\n", remoteAddr, err)
 					cancel()
 					return
@@ -350,7 +350,10 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 	args = append(args, url.String())
 
 	log.Printf("Running command %v\n", append([]string{YTCmd}, args...))
-	cmdOutCh, cmdErrCh := RunCommandCh(tCtx, YTCmd, args...)
+	cmdOutCh, cmdErrCh, err := RunCommandCh(tCtx, YTCmd, args...)
+	if err != nil {
+		return err
+	}
 
 	var info Info
 	count := 0
@@ -397,7 +400,10 @@ loop:
 		select {
 		case err := <-errCh:
 			return err
-		case err := <-cmdErrCh:
+		case err, open := <-cmdErrCh:
+			if !open {
+				break loop
+			}
 			return err
 		case line, open = <-cmdOutCh:
 			if !open {
@@ -654,7 +660,7 @@ func ServeStream(webRoot string) http.HandlerFunc {
 				return
 			}
 			if i == 0 {
-				if time.Since(lastData) > time.Duration(StreamSourceTimeoutSec) {
+				if time.Since(lastData) > time.Duration(StreamSourceTimeout) {
 					log.Printf("servestream timeout\n")
 					return
 				}

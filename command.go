@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sync"
 	"syscall"
 )
 
@@ -26,32 +27,62 @@ func RunCommand(ctx context.Context, command string, flags ...string) ([]byte, e
 	return out, err
 }
 
-func RunCommandCh(ctx context.Context, command string, flags ...string) (chan string, chan error) {
-	r, w := io.Pipe()
+// Credit to: https://blog.kowalczyk.info/article/wOYk/advanced-command-execution-in-go-with-osexec.html
+func RunCommandCh(ctx context.Context, command string, flags ...string) (chan string, chan error, error) {
 	cmd := exec.CommandContext(ctx, command, flags...)
 	// set process group so that children can be killed
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Stdout = w
-	cmd.Stderr = w
-	stdout := bufio.NewReader(r)
-	outCh := make(chan string, 0)
-	errCh := make(chan error, 0)
+	outCh := make(chan string)
+	errCh := make(chan error)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	stdoutBuf := bufio.NewReader(stdout)
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, nil, err
+	}
+	stderrBuf := bufio.NewReader(stderr)
 	go func() {
+		defer close(outCh)
+		defer close(errCh)
+		err := cmd.Start()
+		if err != nil {
+			errCh <- err
+
+		}
+
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				line, err := stdoutBuf.ReadString('\n')
+				outCh <- line
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						errCh <- err
+					}
+					return
+				}
+			}
+		}()
+
 		for {
-			line, err := stdout.ReadString('\n')
+			line, err := stderrBuf.ReadString('\n')
 			outCh <- line
 			if err != nil {
 				if !errors.Is(err, io.EOF) {
 					errCh <- err
 				}
-				return
+				break
 			}
 		}
-	}()
-	go func() {
-		defer close(outCh)
-		defer close(errCh)
-		err := cmd.Run()
+
+		wg.Wait()
+
+		err = cmd.Wait()
 		if err != nil {
 			errCh <- err
 		}
@@ -59,5 +90,5 @@ func RunCommandCh(ctx context.Context, command string, flags ...string) (chan st
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	}()
 
-	return outCh, errCh
+	return outCh, errCh, nil
 }
