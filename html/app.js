@@ -54,7 +54,7 @@ $(function(){
 		$("#url").val('');
 	});
 
-	$("#recent_header .controls").click(function() {
+	$("#recent_header #controls").click(function() {
 		let urls = [];
 		$(".recent_url.selected").each(function() {
 			urls.push($(this).find(".stream_play").data("stream_url"));
@@ -144,15 +144,26 @@ $(function(){
 						});
 						$ru.append($cont);
 
+						let $media = $("<div>", {class: 'media'});
 						$playButton = $("<svg>", {version: "2.0"}).append( $("<use>", {href: "#play-btn"}) );
-						let $streamPlay = $("<div>", {class: 'stream_play', html: $playButton});
+						let $mediaPlay = $("<div>", {class: 'stream_play', html: $playButton});
 						// 'refresh' play button content to allow SVG to display
-						$streamPlay.html($streamPlay.html());
-						$streamPlay.data("stream_url", msg.Value[i].URL);
-						$streamPlay.data("artist", artist);
-						$streamPlay.data("title", title);
-						$streamPlay.click(streamPlayClick);
-						$ru.append($streamPlay);
+						$mediaPlay.html($mediaPlay.html());
+						$mediaPlay.data("stream_url", msg.Value[i].URL);
+						$mediaPlay.data("artist", artist);
+						$mediaPlay.data("title", title);
+						$mediaPlay.click(streamPlayClick);
+						$media.append($mediaPlay);
+						const progress = getMediaProgress(title, artist);
+						if (progress.duration > 0) {
+							const currentTime = new Date(progress.currentTime * 1000).toISOString().slice(11, 19);
+							const duration = new Date(progress.duration * 1000).toISOString().slice(11, 19);
+							let mediaProgressTxt = currentTime + " / " + duration + " - " + progress.percent.toFixed(0).padStart(3) + "%";
+							mediaProgressTxt = mediaProgressTxt.replaceAll(" ", "&nbsp;");
+							let $mediaProgress = $("<div>", { class: 'media_progress', html: mediaProgressTxt });
+							$media.append($mediaProgress);
+						}
+						$ru.append($media);
 						$("#recent_urls").append($ru);
 					}
 					break;
@@ -173,6 +184,16 @@ $(function(){
 			return true;
 		}
 		return false
+	}
+
+	function getMediaProgress(title, artist) {
+		trackId = "ytdl-" + title + " - " + artist;
+		let obj = JSON.parse(localStorage.getItem(trackId))
+		if (obj) {
+			return {currentTime: obj.currentTime, duration: obj.duration, percent: (obj.currentTime/obj.duration*100)};
+		} else {
+			return {currentTime: 0, duration: 0, percent: 0};
+		}
 	}
 
 	function updatePlayer(url, title, artist, autoplay=false) {
@@ -200,8 +221,8 @@ $(function(){
 
 		player.on('loadedmetadata',(e) => {
 			let obj = JSON.parse(localStorage.getItem(trackId))
-			if(obj && obj.lastPlayTimeSec>0) {
-				player.seek(obj.lastPlayTimeSec);
+			if(obj && obj.currentTime>0) {
+				player.seek(obj.currentTime);
 				if( obj.playbackRate ) {
 					player.playbackRate = obj.playbackRate;
 				}
@@ -214,7 +235,7 @@ $(function(){
 			// store latest play time
 			seekTimer = setInterval(() => {
 				if(isPlaying()) {
-					let o = {lastPlayTimeSec: player.currentTime, timestamp: new Date().getTime(), playbackRate: player.playbackRate}
+					let o = {currentTime: player.currentTime, duration: player.duration, timestamp: new Date().getTime(), playbackRate: player.playbackRate}
 					localStorage.setItem(trackId, JSON.stringify(o));
 				}
 			},2000);
@@ -232,12 +253,14 @@ $(function(){
 		$("#status").prepend("Connection closed\n");
 		console.log("Connection closed");
 		$("#ws-status-light").toggleClass("on off");
+		$("#controls").hide();
 	};
 
 	ws.onopen = function(e) {
 		$("#status").prepend("Connection opened\n");
 		console.log("Connection opened");
 		$("#ws-status-light").toggleClass("off on");
+		$("#controls").show();
 	}
 
 	$("#status").click(function() {

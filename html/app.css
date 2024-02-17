@@ -258,13 +258,13 @@ label {
 	font-weight: bold;
 }
 
-#recent_header .controls {
+#recent_header #controls {
 	cursor: pointer;
 	position: absolute;
 	right: 5px;
 	top: 5px;
 }
-#recent_header .controls svg {
+#recent_header #controls svg {
 	width: 20px;
 	height: 20px;
 	fill: #c22a2a;
@@ -288,21 +288,31 @@ label {
 }
 
 .media_meta {
-  display: flex;
-  flex-direction: column;
-  row-gap: 5px;
-  text-align: left;
+	display: flex;
+	flex-direction: column;
+	row-gap: 5px;
+	text-align: left;
 }
 
 .media_artist {
-  font-size: 90%;
-  color: #555;
+	font-size: 90%;
+	color: #555;
+}
+
+.media {
+	text-align: right;
 }
 
 .stream_play svg {
 	height: 30px;
 	width: 30px;
 	fill: #1f8673;
+}
+
+.media_progress {
+	font-size: 80%;
+	color: #555;
+	margin-top: 5px;
 }
 
 @media (max-width: 800px) {
