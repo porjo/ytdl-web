@@ -16,7 +16,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -293,8 +292,11 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh chan bool, url *url.URL) error {
 
 	forceOpus := true
-	if slices.Contains(noReencodeSites, url.Host) {
-		forceOpus = false
+	for _, h := range noReencodeSites {
+		if strings.Contains(url.Host, h) {
+			forceOpus = false
+			break
+		}
 	}
 
 	tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
