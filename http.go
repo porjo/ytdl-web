@@ -460,12 +460,8 @@ loop:
 	}
 
 	log.Println("Fetching title from media file metadata")
-	filename := diskFileNameTmp + "." + info.Extension
-	if forceOpus {
-		filename = diskFileNameTmp + ".opus"
-	}
 
-	ff, err := runFFprobe(ctx, FFprobeCmd, filename, ws.Timeout)
+	ff, err := runFFprobe(ctx, FFprobeCmd, diskFileNameTmp2, ws.Timeout)
 	if err != nil {
 		return err
 	}
