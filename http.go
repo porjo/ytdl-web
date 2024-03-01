@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,6 +48,8 @@ const YtdlpSocketTimeoutSec = 10
 
 // default content expiry in seconds
 const DefaultExpirySec = 7200
+
+var noReencodeSites = []string{"youtube.com", "twitter.com", "rumble.com"}
 
 // filename sanitization
 // swap specific special characters
@@ -290,8 +293,7 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- Msg, req Reque
 func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh chan bool, url *url.URL) error {
 
 	forceOpus := true
-
-	if strings.Contains(url.Host, "youtube.com") || strings.Contains(url.Host, "twitter.com") {
+	if slices.Contains(noReencodeSites, url.Host) {
 		forceOpus = false
 	}
 
