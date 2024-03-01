@@ -29,6 +29,9 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # set latest tag for default branch
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Login to Github Packages
         uses: docker/login-action@v2
@@ -44,7 +47,8 @@ jobs:
           context: .
           platforms: linux/amd64
           # Note: tags has to be all lower-case
-          tags: ${{ steps.meta.outputs.tags }}
+          #tags: ${{ steps.meta.outputs.tags }}
+          tags: ghcr.io/porjo/ytdl-web:master
           labels: ${{ steps.meta.outputs.labels }}
           push: true
 
