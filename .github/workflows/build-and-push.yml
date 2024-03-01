@@ -47,13 +47,9 @@ jobs:
           context: .
           platforms: linux/amd64
           # Note: tags has to be all lower-case
-          #tags: ${{ steps.meta.outputs.tags }}
-          tags: ghcr.io/porjo/ytdl-web:master
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           push: true
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
-      
-      - name: Image tags
-        run: echo ${{ steps.meta.outputs.tags }}
