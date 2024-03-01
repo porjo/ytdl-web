@@ -50,3 +50,6 @@ jobs:
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
+      
+      - name: Image tags
+        run: echo ${{ steps.meta.outputs.tags }}
