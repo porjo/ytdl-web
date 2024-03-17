@@ -27,7 +27,7 @@ import (
 // capture progress output e.g '100 of 10000000 / 10000000 eta 30'
 var ytProgressRe = regexp.MustCompile(`([\d]+) of ([\dNA]+) / ([\d.NA]+) eta ([\d]+)`)
 
-const MaxFileSize = 170e6 // 150 MB
+const MaxFileSize = 2 ^ 20*500 // 500 MiB
 
 // default process timeout in seconds (if not explicitly set via flag)
 const DefaultProcessTimeoutSec = 300
