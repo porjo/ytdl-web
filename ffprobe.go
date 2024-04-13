@@ -8,8 +8,10 @@ import (
 )
 
 type ffprobeTags struct {
-	Title  string
-	Artist string
+	Title       string
+	Artist      string
+	Show        string
+	Description string
 }
 
 type ffprobe struct {
@@ -45,17 +47,24 @@ func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.D
 	return ff, nil
 }
 
-func titleArtist(ff *ffprobe) (title, artist string) {
+func titleArtistDescription(ff *ffprobe) (title, artist, description string) {
 	if ff.Format.Tags.Title != "" {
 		title = ff.Format.Tags.Title
 	}
 	if ff.Format.Tags.Artist != "" {
 		artist = ff.Format.Tags.Artist
 	}
+	if ff.Format.Tags.Description != "" {
+		description = ff.Format.Tags.Description
+	}
 
 	if title == "" && len(ff.Streams) > 0 {
 		title = ff.Streams[0].Tags.Title
 		artist = ff.Streams[0].Tags.Artist
+		if artist == "" && ff.Streams[0].Tags.Show != "" {
+			artist = ff.Streams[0].Tags.Show
+		}
+		description = ff.Streams[0].Tags.Description
 	}
 	if title == "" {
 		title = "unknown title"

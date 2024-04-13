@@ -12,10 +12,11 @@ import (
 const cleanupInterval = 30 * time.Second
 
 type recent struct {
-	URL       string
-	Artist    string
-	Title     string
-	Timestamp time.Time
+	URL         string
+	Title       string
+	Artist      string
+	Description string
+	Timestamp   time.Time
 }
 
 func GetRecentURLs(ctx context.Context, webRoot, outPath string, cmdTimeout time.Duration) ([]recent, error) {
@@ -35,7 +36,7 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath string, cmdTimeout time
 			}
 			r := recent{}
 			r.URL = filepath.Join(outPath, file.Name())
-			r.Title, r.Artist = titleArtist(ff)
+			r.Title, r.Artist, r.Description = titleArtistDescription(ff)
 			i, err := file.Info()
 			if err != nil {
 				log.Print(err)

@@ -80,12 +80,23 @@ type Request struct {
 	DeleteURLs []string `json:"delete_urls"`
 }
 
+type YTInfo struct {
+	Title                string
+	Channel              string
+	Series               string
+	Description          string
+	FileSize             int64
+	Extension            string        `json:"ext"`
+	SponsorBlockChapters []interface{} `json:"sponsorblock_chapters"`
+}
 type Info struct {
-	Title       string
-	Artist      string
-	FileSize    int64
-	Extension   string `json:"ext"`
-	DownloadURL string
+	Title        string
+	Artist       string
+	Description  string
+	FileSize     int64
+	Extension    string
+	DownloadURL  string
+	SponsorBlock bool
 }
 
 type Progress struct {
@@ -378,13 +389,26 @@ func (ws *wsHandler) ytDownload(ctx context.Context, outCh chan<- Msg, restartCh
 			return fmt.Errorf("info file read error: %s", err)
 		}
 
-		err = json.Unmarshal(raw, &info)
+		var ytInfo YTInfo
+		err = json.Unmarshal(raw, &ytInfo)
 		if err != nil {
 			return fmt.Errorf("info file json unmarshal error: %s", err)
 		}
+
+		info.Title = ytInfo.Title
+		info.Artist = ytInfo.Channel
+		if info.Artist == "" {
+			info.Artist = ytInfo.Series
+		}
+		info.Description = ytInfo.Description
+		info.FileSize = ytInfo.FileSize
+		info.Extension = ytInfo.Extension
+		info.SponsorBlock = len(ytInfo.SponsorBlockChapters) > 0
+
 		if info.FileSize > MaxFileSize {
 			return fmt.Errorf("filesize %d too large", info.FileSize)
 		}
+
 		m := Msg{Key: "info", Value: info}
 		outCh <- m
 		break
@@ -461,21 +485,23 @@ loop:
 		diskFileNameTmp2 = string(diskFileNameTmp2b[:idx])
 	}
 
-	log.Println("Fetching title from media file metadata")
+	/*
+		log.Println("Fetching title from media file metadata")
 
-	ff, err := runFFprobe(ctx, FFprobeCmd, diskFileNameTmp2, ws.Timeout)
-	if err != nil {
-		return err
-	}
-	info.Title, info.Artist = titleArtist(ff)
+		ff, err := runFFprobe(ctx, FFprobeCmd, diskFileNameTmp2, ws.Timeout)
+		if err != nil {
+			return err
+		}
+		info.Title, info.Artist, info.Description = titleArtistDescription(ff)
 
-	if info.Title == "" {
-		return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
-	}
+		if info.Title == "" {
+			return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
+		}
 
-	if info.Artist == "" {
-		info.Artist = "unknown"
-	}
+		if info.Artist == "" {
+			info.Artist = "unknown"
+		}
+	*/
 	sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
 	sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
 	sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
@@ -555,7 +581,7 @@ func getYTProgress(v string) *Progress {
 
 func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh chan error, filename, webPath string) {
 	var startTime time.Time
-	ffprobeRan := false
+	//ffprobeRan := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -574,15 +600,18 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 		}
 
 		// wait until we have some data before running ffprobe
-		if !ffprobeRan && opusFI.Size() > 10000 {
-			ff, err := runFFprobe(ctx, FFprobeCmd, filename, time.Second*10)
-			if err != nil {
-				// FIXME this blocks as nobody is reading
-				errCh <- err
-				return
-			}
-			ffprobeRan = true
-			info.Title, info.Artist = titleArtist(ff)
+		//if !ffprobeRan && opusFI.Size() > 10000 {
+		if opusFI.Size() > 10000 {
+			/*
+					ff, err := runFFprobe(ctx, FFprobeCmd, filename, time.Second*10)
+					if err != nil {
+						// FIXME this blocks as nobody is reading
+						errCh <- err
+						return
+					}
+					ffprobeRan = true
+				info.Title, info.Artist, info.Description = titleArtistDescription(ff)
+			*/
 			info.DownloadURL = filepath.Join(webPath, "stream", "t", filepath.Base(filename))
 			m := Msg{Key: "link_stream", Value: info}
 			outCh <- m
