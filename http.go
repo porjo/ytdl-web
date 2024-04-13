@@ -581,7 +581,7 @@ func getYTProgress(v string) *Progress {
 
 func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh chan error, filename, webPath string) {
 	var startTime time.Time
-	//ffprobeRan := false
+	streamURLSent := false
 	for {
 		select {
 		case <-ctx.Done():
@@ -599,22 +599,12 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 			continue
 		}
 
-		// wait until we have some data before running ffprobe
-		//if !ffprobeRan && opusFI.Size() > 10000 {
-		if opusFI.Size() > 10000 {
-			/*
-					ff, err := runFFprobe(ctx, FFprobeCmd, filename, time.Second*10)
-					if err != nil {
-						// FIXME this blocks as nobody is reading
-						errCh <- err
-						return
-					}
-					ffprobeRan = true
-				info.Title, info.Artist, info.Description = titleArtistDescription(ff)
-			*/
+		// wait until we have some data before sending stream URL
+		if !streamURLSent && opusFI.Size() > 10000 {
 			info.DownloadURL = filepath.Join(webPath, "stream", "t", filepath.Base(filename))
 			m := Msg{Key: "link_stream", Value: info}
 			outCh <- m
+			streamURLSent = true
 		}
 
 		if startTime.IsZero() {
