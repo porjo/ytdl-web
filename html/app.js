@@ -187,7 +187,7 @@ $(function(){
 	}
 
 	function getMediaProgress(title, artist) {
-		trackId = "ytdl-" + title + " - " + artist;
+		let trackId = "ytdl-" + title + " - " + artist;
 		let obj = JSON.parse(localStorage.getItem(trackId))
 		if (obj) {
 			return {currentTime: obj.currentTime, duration: obj.duration, percent: (obj.currentTime/obj.duration*100)};
@@ -197,6 +197,10 @@ $(function(){
 	}
 
 	function updatePlayer(url, title, artist, autoplay=false) {
+
+		trackId =  "ytdl-" + title + " - " + artist;
+		document.title = trackId;
+
 		if( player === null ) {
 			player = new Shikwasa.Player({
 				container: () => document.querySelector('#playa'),
@@ -208,6 +212,29 @@ $(function(){
 				speedOptions: [1.0, 1.1, 1.2],
 				download: true
 			});
+
+			player.on('loadedmetadata', (e) => {
+				let obj = JSON.parse(localStorage.getItem(trackId))
+				if (obj && obj.currentTime > 0) {
+					player.seek(obj.currentTime);
+					if (obj.playbackRate) {
+						player.playbackRate = obj.playbackRate;
+					}
+				}
+
+				if (seekTimer !== null) {
+					clearInterval(seekTimer);
+				}
+
+				// store latest play time
+				seekTimer = setInterval(() => {
+					if (isPlaying()) {
+						let o = { currentTime: player.currentTime, duration: player.duration, timestamp: new Date().getTime(), playbackRate: player.playbackRate }
+						localStorage.setItem(trackId, JSON.stringify(o));
+					}
+				}, 2000);
+			});
+
 		} else {
 			player.update({
 				title: title,
@@ -215,31 +242,6 @@ $(function(){
 				src: url
 			});
 		}
-
-		trackId = "ytdl-" + title + " - " + artist;
-		document.title = trackId;
-
-		player.on('loadedmetadata',(e) => {
-			let obj = JSON.parse(localStorage.getItem(trackId))
-			if(obj && obj.currentTime>0) {
-				player.seek(obj.currentTime);
-				if( obj.playbackRate ) {
-					player.playbackRate = obj.playbackRate;
-				}
-			}
-
-			if(seekTimer !== null ) {
-				clearInterval(seekTimer);
-			}
-
-			// store latest play time
-			seekTimer = setInterval(() => {
-				if(isPlaying()) {
-					let o = {currentTime: player.currentTime, duration: player.duration, timestamp: new Date().getTime(), playbackRate: player.playbackRate}
-					localStorage.setItem(trackId, JSON.stringify(o));
-				}
-			},2000);
-		});
 
 		if(autoplay) {
 			player.play();
