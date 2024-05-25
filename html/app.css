@@ -271,7 +271,6 @@ label {
 }
 
 .recent_url {
-	cursor: pointer;
 	display: flex;
 	justify-content: space-between;
 	padding: 10px;
@@ -292,6 +291,7 @@ label {
 	flex-direction: column;
 	row-gap: 5px;
 	text-align: left;
+	cursor: pointer;
 }
 
 .media_artist {
@@ -299,8 +299,29 @@ label {
 	color: #555;
 }
 
+.media_description {
+	font-size: 90%;
+	color: #555;
+	display: none;
+	margin: 10px 5px;
+	line-height: 1.5;
+}
+
+.overflow_scroll {
+	max-height: 200px;
+	overflow-y: scroll;
+	white-space: pre-wrap;
+	border: 1px dotted #555;
+	padding: 10px;
+}
+
 .media {
 	text-align: right;
+}
+
+.stream_play {
+	display: inline-block;
+	cursor: pointer;
 }
 
 .stream_play svg {
@@ -321,6 +342,8 @@ label {
 	}
 	#playa {
 		margin: 0;
+		z-index: 1;
+		position: fixed;
 	}
 }
 

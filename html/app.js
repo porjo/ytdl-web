@@ -134,13 +134,17 @@ $(function(){
 					for (let i=0; i< msg.Value.length; i++) {
 						let artist = msg.Value[i].Artist;
 						let title = msg.Value[i].Title;
+						let description = msg.Value[i].Description;
 
 						let $ru = $("<div>", {class: 'recent_url'});
 						let $cont = $("<div>", {class: 'media_meta'});
 						$cont.append($("<span>", {class: 'media_artist', text: artist}));
-						$cont.append($("<span>", {class: 'media_title', text: title}));
+						$cont.append($("<span>", { class: 'media_title', text: title }));
+						let $description = $("<div>", { class: 'media_description', text: description });
+						$cont.append($description);
 						$cont.click(function() {
 							$(this).closest(".recent_url").toggleClass("selected");
+							$description.slideToggle().addClass('overflow_scroll');
 						});
 						$ru.append($cont);
 
