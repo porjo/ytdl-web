@@ -30,7 +30,7 @@ var ytProgressRe = regexp.MustCompile(`([\d]+) of ([\dNA]+) / ([\d.NA]+) eta ([\
 const MaxFileSize = 1 << 20 * 500 // 500 MiB
 
 // default process timeout in seconds (if not explicitly set via flag)
-const DefaultProcessTimeoutSec = 300
+const DefaultProcessTimeout = 5 * time.Minute
 const ClientJobs = 5
 
 // timeout opus stream if no new data read from file in this time
@@ -46,7 +46,7 @@ const WSWriteWait = 2 * time.Second
 const YtdlpSocketTimeoutSec = 10
 
 // default content expiry in seconds
-const DefaultExpirySec = 7200
+const DefaultExpiry = 24 * time.Hour
 
 var noReencodeSites = []string{"youtube.com", "twitter.com", "rumble.com"}
 
@@ -121,7 +121,7 @@ type wsHandler struct {
 
 func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ws.Timeout == 0 {
-		ws.Timeout = time.Duration(DefaultProcessTimeoutSec)
+		ws.Timeout = time.Duration(DefaultProcessTimeout)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

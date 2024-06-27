@@ -19,8 +19,8 @@ func main() {
 	sponsorBlockCats := flag.String("sponsorBlockCategories", "sponsor", "set SponsorBlock categories (comma separated)")
 	webRoot := flag.String("webRoot", "html", "web root directory")
 	outPath := flag.String("outPath", "dl", "where to store downloaded files (relative to web root)")
-	timeout := flag.Int("timeout", DefaultProcessTimeoutSec, "process timeout (seconds)")
-	expiry := flag.Int("expiry", DefaultExpirySec, "expire downloaded content (seconds)")
+	timeout := flag.Duration("timeout", DefaultProcessTimeout, "maximum processing time")
+	expiry := flag.Duration("expiry", DefaultExpiry, "expire downloaded content")
 	port := flag.Int("port", 8080, "listen on this port")
 	flag.Parse()
 
@@ -28,9 +28,9 @@ func main() {
 
 	log.Printf("Starting ytdl-web...\n")
 	log.Printf("Set web root: %s\n", *webRoot)
-	log.Printf("Set process timeout: %d sec\n", *timeout)
+	log.Printf("Set process timeout: %s\n", *timeout)
 	log.Printf("Set output path: %s\n", outPathFull)
-	log.Printf("Set content expiry: %d sec\n", *expiry)
+	log.Printf("Set content expiry: %s\n", *expiry)
 
 	// create tmp dir
 	if err := os.MkdirAll(filepath.Join(outPathFull, "t"), os.ModePerm); err != nil {
@@ -47,7 +47,7 @@ func main() {
 
 	ws := &wsHandler{
 		WebRoot:          *webRoot,
-		Timeout:          time.Duration(*timeout) * time.Second,
+		Timeout:          *timeout,
 		SponsorBlock:     *sponsorBlock,
 		SponsorBlockCats: *sponsorBlockCats,
 		OutPath:          *outPath,
@@ -57,8 +57,7 @@ func main() {
 	http.Handle("/", http.FileServer(http.Dir(*webRoot)))
 
 	log.Printf("Starting cleanup routine...\n")
-	expiryD := time.Second * time.Duration(*expiry)
-	go fileCleanup(filepath.Join(*webRoot, *outPath), expiryD)
+	go fileCleanup(filepath.Join(*webRoot, *outPath), *expiry)
 
 	log.Printf("Listening on :%d...\n", *port)
 
