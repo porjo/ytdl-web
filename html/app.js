@@ -227,10 +227,6 @@ $(function(){
 					}
 				}
 
-				if (seekTimer !== null) {
-					clearInterval(seekTimer);
-				}
-
 				// store latest play time
 				seekTimer = setInterval(() => {
 					if (isPlaying()) {
@@ -241,6 +237,11 @@ $(function(){
 			});
 
 		} else {
+
+			if (seekTimer !== null) {
+				clearInterval(seekTimer);
+			}
+
 			player.update({
 				title: title,
 				artist: artist,
