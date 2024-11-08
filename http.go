@@ -53,17 +53,18 @@ var noReencodeSites = []string{"youtube.com", "twitter.com", "rumble.com"}
 // filename sanitization
 // swap specific special characters
 var filenameReplacer = strings.NewReplacer(
-	"(", "_", ")", "_", "&", "+", "—", "-", "~", ".", "¿", "_", "'", "", "±", "+", "/", ".", "\\", ".", "ß", "ss",
-	"!", "_", "^", "_", "$", "_", "%", "_", "@", "_", "¯", "-", "`", ".", "#", "", "¡", "_", "ñ", "n", "Ñ", "N",
+	"(", "_", ")", "_", "&", "+", "—", "-", "~", "-", "¿", "_", "'", "", "±", "+", "/", "-", "\\", "-", "ß", "ss",
+	"!", "_", "^", "_", "$", "_", "%", "_", "@", "_", "¯", "-", "`", "_", "#", "", "¡", "_", "ñ", "n", "Ñ", "N",
 	"é", "e", "è", "e", "ê", "e", "ë", "e", "É", "E", "È", "E", "Ê", "E", "Ë", "E",
 	"à", "a", "â", "a", "ä", "a", "á", "a", "À", "A", "Â", "A", "Ä", "A", "Á", "A",
 	"ò", "o", "ô", "o", "ö", "o", "ó", "o", "Ò", "O", "Ô", "O", "Ö", "O", "Ó", "O",
 	"ì", "i", "î", "i", "ï", "i", "í", "i", "Ì", "I", "Î", "I", "Ï", "I", "Í", "I",
 	"ù", "u", "û", "u", "ü", "u", "ú", "u", "Ù", "U", "Û", "U", "Ü", "U", "Ú", "U",
+	"|", "_",
 )
 
 // remove all remaining non-allowed characters
-var filenameRegexp = regexp.MustCompile("[^0-9A-Za-z_. +,-]+")
+var filenameRegexp = regexp.MustCompile("[^0-9A-Za-z_ +,-]+")
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -493,20 +494,26 @@ loop:
 			return err
 		}
 		info.Title, info.Artist, info.Description = titleArtistDescription(ff)
-
-		if info.Title == "" {
-			return fmt.Errorf("unknown error (title was empty), last line: '%s'", line)
-		}
-
-		if info.Artist == "" {
-			info.Artist = "unknown"
-		}
 	*/
+
+	if info.Title == "" {
+		info.Title = "unknown"
+	}
+
+	if info.Artist == "" {
+		info.Artist = "unknown"
+	}
 	sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
 	sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
 	sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
+	sanitizedTitle = "ytdl-" + sanitizedTitle
+	// check maximum filename length
+	if len(sanitizedTitle) > 100 {
+		// leave a margin of 10 chars
+		sanitizedTitle = sanitizedTitle[:100]
+	}
 
-	finalFileNameNoExt := filepath.Join(ws.WebRoot, ws.OutPath, "ytdl-"+sanitizedTitle)
+	finalFileNameNoExt := filepath.Join(ws.WebRoot, ws.OutPath, sanitizedTitle)
 
 	ext := path.Ext(diskFileNameTmp2)
 	// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
