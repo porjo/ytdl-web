@@ -105,9 +105,9 @@ $(function(){
 							}
 						},1000);
 					}
-					let pct = parseFloat(msg.Value.Pct);
+					let pct = msg.Value.Pct > 100 ? 100: msg.Value.Pct;
 					$("#progress-bar > span").css("width", pct + "%")
-						.text(pct + "%");
+						.text(pct.toFixed(1) + "%");
 					$("#eta").text( msg.Value.ETA );
 					if( msg.Value.FileSize !== '' ) {
 						$("#filesize").text( msg.Value.FileSize + " MB" );

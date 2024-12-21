@@ -101,7 +101,7 @@ type Info struct {
 }
 
 type Progress struct {
-	Pct      string
+	Pct      float32
 	FileSize string
 	ETA      string
 }
@@ -445,12 +445,8 @@ loop:
 				if startDownload.IsZero() {
 					startDownload = time.Now()
 				}
-				pct, err := strconv.ParseFloat(p.Pct, 64)
-				if err != nil {
-					return err
-				}
 				if restartCh != nil {
-					if time.Since(startDownload) > time.Second*5 && pct < 10 {
+					if time.Since(startDownload) > time.Second*5 && p.Pct < 10 {
 						close(restartCh)
 						msg := "Restarting download...\n"
 						log.Print(msg)
@@ -503,13 +499,15 @@ loop:
 	if info.Artist == "" {
 		info.Artist = "unknown"
 	}
+	// swap specific special characters
 	sanitizedTitle := filenameReplacer.Replace(info.Artist + "-" + info.Title)
+	// remove all remaining non-allowed characters
 	sanitizedTitle = filenameRegexp.ReplaceAllString(sanitizedTitle, "")
 	sanitizedTitle = strings.Join(strings.Fields(sanitizedTitle), " ") // remove double spaces
 	sanitizedTitle = "ytdl-" + sanitizedTitle
 	// check maximum filename length
+	// 255 is common max length, but 100 is enough
 	if len(sanitizedTitle) > 100 {
-		// leave a margin of 10 chars
 		sanitizedTitle = sanitizedTitle[:100]
 	}
 
@@ -578,8 +576,7 @@ func getYTProgress(v string) *Progress {
 			total = int(totalf)
 		}
 		eta, _ := strconv.Atoi(matches[4])
-		pct := float64(downloaded) / float64(total) * 100.0
-		p.Pct = fmt.Sprintf("%.2f", pct)
+		p.Pct = float32(downloaded) / float32(total) * 100.0
 		p.FileSize = fmt.Sprintf("%.2f", float64(total)/(1024.0*1024.0))
 		p.ETA = fmt.Sprintf("%v", time.Duration(eta)*time.Second)
 	}
@@ -621,12 +618,11 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- Msg, errCh cha
 			mp3FI, err := os.Stat(strings.TrimSuffix(filename, filepath.Ext(filename)) + ".mp3")
 			if err == nil {
 				// Opus compression ratio from MP3 approximately 1:4
-				pctf := (float64(opusFI.Size()) / (float64(mp3FI.Size()) / 4)) * 100
-				pct := fmt.Sprintf("%.1f", pctf)
+				pct := (float32(opusFI.Size()) / (float32(mp3FI.Size()) / 4)) * 100
 				diff := time.Since(startTime)
 				etaStr := ""
-				if pctf > 0 {
-					eta := time.Duration((float64(diff) / pctf) * (100 - pctf)).Round(time.Second)
+				if pct > 0 {
+					eta := time.Duration((float32(diff) / pct) * (100 - pct)).Round(time.Second)
 					etaStr = eta.String()
 				}
 				m := Msg{
