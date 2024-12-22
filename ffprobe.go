@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 )
 
 type ffprobeTags struct {
@@ -23,9 +22,7 @@ type ffprobe struct {
 	}
 }
 
-func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.Duration) (*ffprobe, error) {
-	ffCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+func runFFprobe(ctx context.Context, ffprobeCmd, filename string) (*ffprobe, error) {
 	args := []string{"-i", filename,
 		"-print_format", "json",
 		//		"-v", "quiet",
@@ -33,7 +30,7 @@ func runFFprobe(ctx context.Context, ffprobeCmd, filename string, timeout time.D
 		"-show_format",
 	}
 	//	fmt.Printf("ffprobe cmd %s, filename %s, args %v\n", ffprobeCmd, filename, args)
-	out, err := RunCommand(ffCtx, ffprobeCmd, args...)
+	out, err := RunCommand(ctx, ffprobeCmd, args...)
 	if err != nil {
 		return nil, fmt.Errorf("error running ffprobe: '%w'", err)
 	}

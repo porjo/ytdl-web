@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+const MaxProcessTime = time.Second * 300
+
 func main() {
 
 	ytCmd := flag.String("cmd", "/usr/bin/yt-dlp", "path to yt-dlp")
@@ -19,7 +21,7 @@ func main() {
 	sponsorBlockCats := flag.String("sponsorBlockCategories", "sponsor", "set SponsorBlock categories (comma separated)")
 	webRoot := flag.String("webRoot", "html", "web root directory")
 	outPath := flag.String("outPath", "dl", "where to store downloaded files (relative to web root)")
-	timeout := flag.Duration("timeout", DefaultProcessTimeout, "maximum processing time")
+	maxProcessTime := flag.Duration("timeout", MaxProcessTime, "maximum processing time")
 	expiry := flag.Duration("expiry", DefaultExpiry, "expire downloaded content")
 	port := flag.Int("port", 8080, "listen on this port")
 	flag.Parse()
@@ -28,7 +30,7 @@ func main() {
 
 	log.Printf("Starting ytdl-web...\n")
 	log.Printf("Set web root: %s\n", *webRoot)
-	log.Printf("Set process timeout: %s\n", *timeout)
+	log.Printf("Set process timeout: %s\n", *maxProcessTime)
 	log.Printf("Set output path: %s\n", outPathFull)
 	log.Printf("Set content expiry: %s\n", *expiry)
 
@@ -47,10 +49,10 @@ func main() {
 
 	ws := &wsHandler{
 		WebRoot:          *webRoot,
-		Timeout:          *timeout,
 		SponsorBlock:     *sponsorBlock,
 		SponsorBlockCats: *sponsorBlockCats,
 		OutPath:          *outPath,
+		MaxProcessTime:   *maxProcessTime,
 	}
 	http.Handle("/websocket", ws)
 	http.HandleFunc("/dl/stream/", ServeStream(*webRoot))

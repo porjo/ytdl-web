@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,7 +20,7 @@ type recent struct {
 	Timestamp   time.Time
 }
 
-func GetRecentURLs(ctx context.Context, webRoot, outPath string, cmdTimeout time.Duration) ([]recent, error) {
+func GetRecentURLs(ctx context.Context, webRoot, outPath string) ([]recent, error) {
 	recentURLs := make([]recent, 0)
 
 	files, err := os.ReadDir(filepath.Join(webRoot, outPath))
@@ -29,9 +30,14 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath string, cmdTimeout time
 
 	for _, file := range files {
 		if !file.IsDir() && file.Name() != ".README" && !strings.HasSuffix(file.Name(), ".json") {
-			ff, err := runFFprobe(ctx, FFprobeCmd, filepath.Join(webRoot, outPath, file.Name()), cmdTimeout)
+			ff, err := runFFprobe(ctx, FFprobeCmd, filepath.Join(webRoot, outPath, file.Name()))
 			if err != nil {
-				log.Printf("ffprobe error %s\n", err)
+				if errors.Is(context.DeadlineExceeded, err) {
+					log.Printf("ffprobe ran too long and was cancelled, error %s\n", err)
+
+				} else {
+					log.Printf("ffprobe error %s\n", err)
+				}
 				continue
 			}
 			r := recent{}
