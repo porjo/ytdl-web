@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -9,6 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/porjo/ytdl-web/internal/jobs"
+	"github.com/porjo/ytdl-web/internal/ytworker"
 )
 
 const MaxProcessTime = time.Second * 300
@@ -44,15 +48,21 @@ func main() {
 		log.Fatal(err)
 	}
 
-	YTCmd = *ytCmd
-	FFprobeCmd = *ffprobeCmd
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dl := ytworker.NewDownload(*webRoot, *outPath, *sponsorBlock, *sponsorBlockCats, *ytCmd, *maxProcessTime)
+	dispatcher := jobs.NewDispatcher(dl, 10)
+	go func() {
+		log.Printf("starting job dispatcher")
+		dispatcher.Start(ctx)
+	}()
 
 	ws := &wsHandler{
-		WebRoot:          *webRoot,
-		SponsorBlock:     *sponsorBlock,
-		SponsorBlockCats: *sponsorBlockCats,
-		OutPath:          *outPath,
-		MaxProcessTime:   *maxProcessTime,
+		WebRoot:    *webRoot,
+		OutPath:    *outPath,
+		FFProbeCmd: *ffprobeCmd,
+		Dispatcher: dispatcher,
 	}
 	http.Handle("/websocket", ws)
 	http.HandleFunc("/dl/stream/", ServeStream(*webRoot))

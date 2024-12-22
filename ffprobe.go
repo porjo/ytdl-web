@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"github.com/porjo/ytdl-web/internal/command"
 )
 
 type ffprobeTags struct {
@@ -30,7 +32,7 @@ func runFFprobe(ctx context.Context, ffprobeCmd, filename string) (*ffprobe, err
 		"-show_format",
 	}
 	//	fmt.Printf("ffprobe cmd %s, filename %s, args %v\n", ffprobeCmd, filename, args)
-	out, err := RunCommand(ctx, ffprobeCmd, args...)
+	out, err := command.RunCommand(ctx, ffprobeCmd, args...)
 	if err != nil {
 		return nil, fmt.Errorf("error running ffprobe: '%w'", err)
 	}

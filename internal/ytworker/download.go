@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/porjo/ytdl-web/internal/command"
 	"github.com/porjo/ytdl-web/internal/jobs"
 	"github.com/porjo/ytdl-web/internal/websocket"
 )
@@ -28,6 +29,7 @@ const (
 
 	MaxFileSize = 1 << 20 * 500 // 500 MiB
 
+	YtdlpSocketTimeoutSec = 10
 )
 
 var (
@@ -83,16 +85,27 @@ type Download struct {
 	outChan        chan websocket.Msg
 	inChans        map[int]chan websocket.Msg
 	maxProcessTime time.Duration
+
+	webRoot          string
+	outPath          string
+	sponsorBlock     bool
+	sponsorBlockCats string
+	ytCmd            string
 }
 
-func NewDownload(maxProcessTime time.Duration) *Download {
+func NewDownload(webroot, outPath string, sponsorBlock bool, sponsorBlockCats string, ytCmd string, maxProcessTime time.Duration) *Download {
 
 	if maxProcessTime < time.Second*30 {
 		maxProcessTime = DefaultMaxProcessTime
 	}
 
 	dl := &Download{
-		maxProcessTime: maxProcessTime,
+		maxProcessTime:   maxProcessTime,
+		outPath:          outPath,
+		webRoot:          webroot,
+		sponsorBlock:     sponsorBlock,
+		sponsorBlockCats: sponsorBlockCats,
+		ytCmd:            ytCmd,
 	}
 	dl.inChans = make(map[int]chan websocket.Msg)
 	dl.outChan = make(chan websocket.Msg)
@@ -158,15 +171,12 @@ func (yt *Download) download(ctx context.Context, outCh chan<- websocket.Msg, re
 		}
 	}
 
-	tCtx, cancel := context.WithTimeout(ctx, ws.Timeout)
-	defer cancel()
-
 	errCh := make(chan error)
 	defer close(errCh)
 
 	// filename is md5 sum of URL
 	urlSum := md5.Sum([]byte(url.String()))
-	diskFileNameTmp := filepath.Join(ws.WebRoot, ws.OutPath, "t", "ytdl-"+fmt.Sprintf("%x", urlSum))
+	diskFileNameTmp := filepath.Join(yt.webRoot, yt.outPath, "t", "ytdl-"+fmt.Sprintf("%x", urlSum))
 
 	log.Printf("Fetching url %s\n", url.String())
 	args := []string{
@@ -198,9 +208,9 @@ func (yt *Download) download(ctx context.Context, outCh chan<- websocket.Msg, re
 		"--extractor-args", "youtube:formats=duplicate",
 	}
 
-	if ws.SponsorBlock {
+	if yt.sponsorBlock {
 		args = append(args, []string{
-			"--sponsorblock-remove", ws.SponsorBlockCats,
+			"--sponsorblock-remove", yt.sponsorBlockCats,
 		}...)
 	}
 	if forceOpus {
@@ -212,8 +222,8 @@ func (yt *Download) download(ctx context.Context, outCh chan<- websocket.Msg, re
 	}
 	args = append(args, url.String())
 
-	log.Printf("Running command %v\n", append([]string{YTCmd}, args...))
-	cmdOutCh, cmdErrCh, err := RunCommandCh(tCtx, YTCmd, args...)
+	log.Printf("Running command %v\n", append([]string{yt.ytCmd}, args...))
+	cmdOutCh, cmdErrCh, err := command.RunCommandCh(ctx, yt.ytCmd, args...)
 	if err != nil {
 		return err
 	}
@@ -264,7 +274,7 @@ func (yt *Download) download(ctx context.Context, outCh chan<- websocket.Msg, re
 
 	// output size of opus file as it gets written
 	if forceOpus {
-		go getOpusFileSize(tCtx, info, outCh, errCh, diskFileNameTmp+".opus", ws.OutPath)
+		go getOpusFileSize(ctx, info, outCh, errCh, diskFileNameTmp+".opus", yt.outPath)
 	}
 
 	var startDownload time.Time
@@ -329,16 +339,6 @@ loop:
 		diskFileNameTmp2 = string(diskFileNameTmp2b[:idx])
 	}
 
-	/*
-		log.Println("Fetching title from media file metadata")
-
-		ff, err := runFFprobe(ctx, FFprobeCmd, diskFileNameTmp2, ws.Timeout)
-		if err != nil {
-			return err
-		}
-		info.Title, info.Artist, info.Description = titleArtistDescription(ff)
-	*/
-
 	if info.Title == "" {
 		info.Title = "unknown"
 	}
@@ -358,7 +358,7 @@ loop:
 		sanitizedTitle = sanitizedTitle[:100]
 	}
 
-	finalFileNameNoExt := filepath.Join(ws.WebRoot, ws.OutPath, sanitizedTitle)
+	finalFileNameNoExt := filepath.Join(yt.webRoot, yt.outPath, sanitizedTitle)
 
 	ext := path.Ext(diskFileNameTmp2)
 	// rename .opus to .oga. It's already an OGG container and most clients prefer .oga extension.
@@ -384,7 +384,7 @@ loop:
 		return err
 	}
 
-	info.DownloadURL = filepath.Join(ws.OutPath, filepath.Base(finalFileName))
+	info.DownloadURL = filepath.Join(yt.outPath, filepath.Base(finalFileName))
 	// don't send link for forceOpus as that's handled in getOpusFileSize goroutine
 	if !forceOpus {
 		m := websocket.Msg{Key: "link_stream", Value: info}
@@ -394,13 +394,15 @@ loop:
 	m := websocket.Msg{Key: "completed", Value: "true"}
 	outCh <- m
 
-	// Send recently retrieved URLs
-	recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.Timeout)
-	if err != nil {
-		return fmt.Errorf("WS %s: GetRecentURLS err %w", ws.RemoteAddr, err)
-	}
-	m = websocket.Msg{Key: "recent", Value: recentURLs}
-	outCh <- m
+	/*
+		// Send recently retrieved URLs
+		recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.Timeout)
+		if err != nil {
+			return fmt.Errorf("WS %s: GetRecentURLS err %w", ws.RemoteAddr, err)
+		}
+		m = websocket.Msg{Key: "recent", Value: recentURLs}
+		outCh <- m
+	*/
 
 	return nil
 }
@@ -430,7 +432,7 @@ func getYTProgress(v string) *Progress {
 	return p
 }
 
-func getOpusFileSize(ctx context.Context, info Info, outCh chan<- iws.Msg, errCh chan error, filename, webPath string) {
+func getOpusFileSize(ctx context.Context, info Info, outCh chan<- websocket.Msg, errCh chan error, filename, webPath string) {
 	var startTime time.Time
 	streamURLSent := false
 	for {
@@ -453,7 +455,7 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- iws.Msg, errCh
 		// wait until we have some data before sending stream URL
 		if !streamURLSent && opusFI.Size() > 10000 {
 			info.DownloadURL = filepath.Join(webPath, "stream", "t", filepath.Base(filename))
-			m := iws.Msg{Key: "link_stream", Value: info}
+			m := websocket.Msg{Key: "link_stream", Value: info}
 			outCh <- m
 			streamURLSent = true
 		}
@@ -472,7 +474,7 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- iws.Msg, errCh
 					eta := time.Duration((float32(diff) / pct) * (100 - pct)).Round(time.Second)
 					etaStr = eta.String()
 				}
-				m := iws.Msg{
+				m := websocket.Msg{
 					Key: "progress",
 					Value: Progress{
 						Pct: pct,
@@ -482,7 +484,7 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- iws.Msg, errCh
 				outCh <- m
 			}
 		}
-		m := iws.Msg{
+		m := websocket.Msg{
 			Key:   "unknown",
 			Value: fmt.Sprintf("opus file size %.2f MB\n", float32(opusFI.Size())*1e-6),
 		}

@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"net/url"
 	"path"
 	"strings"
 	"sync"
@@ -18,7 +17,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/porjo/ytdl-web/internal/jobs"
 	iws "github.com/porjo/ytdl-web/internal/websocket"
-	"github.com/porjo/ytdl-web/internal/ytworker"
 )
 
 const (
@@ -31,8 +29,6 @@ const (
 
 	WSPingInterval = 10 * time.Second
 	WSWriteWait    = 2 * time.Second
-
-	YtdlpSocketTimeoutSec = 10
 
 	// default content expiry in seconds
 	DefaultExpiry = 24 * time.Hour
@@ -56,12 +52,11 @@ type Conn struct {
 }
 
 type wsHandler struct {
-	WebRoot          string
-	SponsorBlock     bool
-	SponsorBlockCats string
-	OutPath          string
-	RemoteAddr       string
-	MaxProcessTime   time.Duration
+	WebRoot    string
+	OutPath    string
+	RemoteAddr string
+	FFProbeCmd string
+	Dispatcher *jobs.Dispatcher
 }
 
 func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -137,16 +132,9 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	dl := ytworker.NewDownload(ws.MaxProcessTime)
-	dispatcher := jobs.NewDispatcher(dl, 10)
-	go func() {
-		log.Printf("starting job dispatcher")
-		dispatcher.Start(ctx)
-	}()
-
 	// Send recently retrieved URLs
 	gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
-	recentURLs, err := GetRecentURLs(gruCtx, ws.WebRoot, ws.OutPath)
+	recentURLs, err := GetRecentURLs(gruCtx, ws.WebRoot, ws.OutPath, ws.FFProbeCmd)
 	if err != nil {
 		log.Printf("WS %s: GetRecentURLS err %s\n", ws.RemoteAddr, err)
 		return
@@ -174,7 +162,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-				err := ws.msgHandler(ctx, outCh, req)
+				err := ws.msgHandler(req)
 				if err != nil {
 					log.Printf("Error '%s'\n", err)
 					errCh <- err
@@ -204,7 +192,7 @@ func (c *Conn) writeMsg(val interface{}) error {
 	return nil
 }
 
-func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- iws.Msg, req Request) error {
+func (ws *wsHandler) msgHandler(req Request) error {
 
 	if req.URL == "" && len(req.DeleteURLs) == 0 {
 		return fmt.Errorf("unknown parameters")
@@ -216,35 +204,24 @@ func (ws *wsHandler) msgHandler(ctx context.Context, outCh chan<- iws.Msg, req R
 			return err
 		}
 	} else if req.URL != "" {
-		url, err := url.Parse(req.URL)
-		if err != nil {
-			return err
-		}
 
-		if url.String() == "" {
-			return fmt.Errorf("url was empty")
-		}
+		job := &jobs.Job{Payload: req.URL}
+		ws.Dispatcher.Enqueue(job)
 
-		restartCh := make(chan bool)
-		ctx1, cancel1 := context.WithCancel(ctx)
-		defer cancel1()
-		err = ws.ytDownload(ctx1, outCh, restartCh, url)
-		if err != nil {
-			return err
-		}
-
-		select {
-		case <-restartCh:
-			ctx2, cancel2 := context.WithCancel(ctx)
-			defer cancel2()
-			cancel1()
-			var restartCh2 chan bool
-			err = ws.ytDownload(ctx2, outCh, restartCh2, url)
-			if err != nil {
-				return err
+		/*
+			select {
+			case <-restartCh:
+				ctx2, cancel2 := context.WithCancel(ctx)
+				defer cancel2()
+				cancel1()
+				var restartCh2 chan bool
+				err = ws.ytDownload(ctx2, outCh, restartCh2, url)
+				if err != nil {
+					return err
+				}
+			default:
 			}
-		default:
-		}
+		*/
 	}
 
 	return nil
