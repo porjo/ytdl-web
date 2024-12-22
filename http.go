@@ -17,6 +17,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/porjo/ytdl-web/internal/jobs"
 	iws "github.com/porjo/ytdl-web/internal/websocket"
+	"github.com/porjo/ytdl-web/internal/ytworker"
 )
 
 const (
@@ -57,6 +58,7 @@ type wsHandler struct {
 	RemoteAddr string
 	FFProbeCmd string
 	Dispatcher *jobs.Dispatcher
+	YTworker   *ytworker.Download
 }
 
 func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -100,8 +102,6 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}(ws.RemoteAddr)
 
-	outCh := make(chan iws.Msg)
-	defer close(outCh)
 	errCh := make(chan error)
 	defer close(errCh)
 	// wait for goroutines to return before closing channels (defers are last in first out)
@@ -114,7 +114,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-ctx.Done():
 				return
-			case m, open := <-outCh:
+			case m, open := <-ws.YTworker.OutChan:
 				if !open {
 					return
 				}

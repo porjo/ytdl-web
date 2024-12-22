@@ -92,6 +92,7 @@ $(function(){
 					clearTimeout(progTimer);
 					break;
 				case 'progress':
+					console.log('progress', msg);
 					$("#output").show();
 					$("#spinner").hide();
 					$("#progress-bar").show();

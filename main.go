@@ -58,11 +58,17 @@ func main() {
 		dispatcher.Start(ctx)
 	}()
 
+	err = dl.StartOutput(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	ws := &wsHandler{
 		WebRoot:    *webRoot,
 		OutPath:    *outPath,
 		FFProbeCmd: *ffprobeCmd,
 		Dispatcher: dispatcher,
+		YTworker:   dl,
 	}
 	http.Handle("/websocket", ws)
 	http.HandleFunc("/dl/stream/", ServeStream(*webRoot))

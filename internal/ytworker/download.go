@@ -75,6 +75,7 @@ type Info struct {
 }
 
 type Progress struct {
+	Id       int64
 	Pct      float32
 	FileSize string
 	ETA      string
@@ -82,8 +83,10 @@ type Progress struct {
 
 type Download struct {
 	sync.Mutex
-	outChan        chan websocket.Msg
-	inChans        map[int]chan websocket.Msg
+
+	OutChan chan websocket.Msg
+
+	inChans        map[int64]chan websocket.Msg
 	maxProcessTime time.Duration
 
 	webRoot          string
@@ -91,6 +94,8 @@ type Download struct {
 	sponsorBlock     bool
 	sponsorBlockCats string
 	ytCmd            string
+
+	outputStarted bool
 }
 
 func NewDownload(webroot, outPath string, sponsorBlock bool, sponsorBlockCats string, ytCmd string, maxProcessTime time.Duration) *Download {
@@ -107,16 +112,22 @@ func NewDownload(webroot, outPath string, sponsorBlock bool, sponsorBlockCats st
 		sponsorBlockCats: sponsorBlockCats,
 		ytCmd:            ytCmd,
 	}
-	dl.inChans = make(map[int]chan websocket.Msg)
-	dl.outChan = make(chan websocket.Msg)
+	dl.inChans = make(map[int64]chan websocket.Msg)
+	dl.OutChan = make(chan websocket.Msg)
 
 	return dl
 }
 
-func (yt *Download) GetOutput(ctx context.Context) (<-chan websocket.Msg, error) {
+func (yt *Download) StartOutput(ctx context.Context) error {
+
+	if yt.outputStarted {
+		return fmt.Errorf("output already started")
+	}
+
 	go func() {
 		log.Printf("output monitor starting")
 		defer log.Printf("output monitor closing")
+		defer close(yt.OutChan)
 		for {
 			select {
 			case <-ctx.Done():
@@ -127,7 +138,7 @@ func (yt *Download) GetOutput(ctx context.Context) (<-chan websocket.Msg, error)
 					select {
 					case m := <-inCh:
 						select {
-						case yt.outChan <- m:
+						case yt.OutChan <- m:
 						default:
 							// don't block if we can't write to the channel
 						}
@@ -139,14 +150,17 @@ func (yt *Download) GetOutput(ctx context.Context) (<-chan websocket.Msg, error)
 			}
 		}
 	}()
-	return yt.outChan, nil
+
+	yt.outputStarted = true
+	return nil
 }
 
 func (yt *Download) Work(j *jobs.Job) {
 
 	inCh := make(chan websocket.Msg)
+	id := time.Now().UnixMicro()
 	yt.Lock()
-	yt.inChans[int(time.Now().UnixMicro())] = inCh
+	yt.inChans[id] = inCh
 	yt.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), yt.maxProcessTime)
@@ -157,11 +171,15 @@ func (yt *Download) Work(j *jobs.Job) {
 		log.Printf("unable to parse job URL %q, %s", j.Payload, err)
 	}
 
-	yt.download(ctx, inCh, nil, url)
+	yt.download(ctx, id, inCh, nil, url)
 
+	yt.Lock()
+	delete(yt.inChans, id)
+	yt.Unlock()
+	close(inCh)
 }
 
-func (yt *Download) download(ctx context.Context, outCh chan<- websocket.Msg, restartCh chan bool, url *url.URL) error {
+func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websocket.Msg, restartCh chan bool, url *url.URL) error {
 
 	forceOpus := true
 	for _, h := range noReencodeSites {
@@ -274,7 +292,7 @@ func (yt *Download) download(ctx context.Context, outCh chan<- websocket.Msg, re
 
 	// output size of opus file as it gets written
 	if forceOpus {
-		go getOpusFileSize(ctx, info, outCh, errCh, diskFileNameTmp+".opus", yt.outPath)
+		go getOpusFileSize(ctx, id, info, outCh, errCh, diskFileNameTmp+".opus", yt.outPath)
 	}
 
 	var startDownload time.Time
@@ -299,6 +317,7 @@ loop:
 
 			p := getYTProgress(line)
 			if p != nil {
+				p.Id = id
 				if startDownload.IsZero() {
 					startDownload = time.Now()
 				}
@@ -432,7 +451,7 @@ func getYTProgress(v string) *Progress {
 	return p
 }
 
-func getOpusFileSize(ctx context.Context, info Info, outCh chan<- websocket.Msg, errCh chan error, filename, webPath string) {
+func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- websocket.Msg, errCh chan error, filename, webPath string) {
 	var startTime time.Time
 	streamURLSent := false
 	for {
@@ -477,6 +496,7 @@ func getOpusFileSize(ctx context.Context, info Info, outCh chan<- websocket.Msg,
 				m := websocket.Msg{
 					Key: "progress",
 					Value: Progress{
+						Id:  id,
 						Pct: pct,
 						ETA: etaStr,
 					},
