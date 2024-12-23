@@ -51,17 +51,12 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dl := ytworker.NewDownload(*webRoot, *outPath, *sponsorBlock, *sponsorBlockCats, *ytCmd, *maxProcessTime)
+	dl := ytworker.NewDownload(ctx, *webRoot, *outPath, *sponsorBlock, *sponsorBlockCats, *ytCmd, *maxProcessTime)
 	dispatcher := jobs.NewDispatcher(dl, 10)
 	go func() {
 		log.Printf("starting job dispatcher")
 		dispatcher.Start(ctx)
 	}()
-
-	err = dl.StartOutput(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	ws := &wsHandler{
 		WebRoot:    *webRoot,

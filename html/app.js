@@ -83,42 +83,60 @@ $(function(){
 					$("#status").prepend("Error: " + msg.Value + "\n");
 					break;
 				case 'unknown':
+					console.log('unknown', msg)
 					$("#output").show();
-					$("#status").prepend(msg.Value);
+					var $job = $('#job-' + msg.Value.Id);
+					$job.find('.status').prepend(msg.Value.Msg);
 					break;
 				case 'completed':
 					$("#spinner").hide();
 					$("#output").hide();
 					clearTimeout(progTimer);
 					break;
-				case 'progress':
-					console.log('progress', msg);
+				case 'info':
+					console.log('info', msg);
+
 					$("#output").show();
 					$("#spinner").hide();
-					$("#progress-bar").show();
-					progLast = Date.now();
-					if(!progTimer) {
-						progTimer = setInterval(() => {
-							let now = Date.now();
-							if( (now - progLast) > 4000) {
-								$("#spinner").show();
-								$("#progress-bar").hide();
-							}
-						},1000);
+					var $job = $('#job-' + msg.Value.Id);
+
+					if( $job.length == 0) {
+						let bytes = parseFloat(msg.Value.FileSize);
+						let fileSize = (bytes / 1024 / 1024).toFixed(2) + " MB";
+
+						var $job = $('<div>', { id: 'job-' + msg.Value.Id, class: 'job' }).appendTo('#output');
+						$('<div>', { class: 'progress-bar', html: '<span>0%</span>' }).appendTo($job);
+						$('<div>', {
+							class: 'details', html:
+								'<label>Video Title:</label><span class="title">' + msg.Value.Title + '</span>' +
+								'<br>' +
+								'<label>ETA:</label><span class="eta"></span>' +
+								'<br>' +
+								'<label>Size:</label><span class="filesize">' + fileSize + '</span>' +
+								'<div class="status"></div>'
+						}).appendTo($job);
+					} else {
+
+						/*
+						progLast = Date.now();
+						if(!progTimer) {
+							progTimer = setInterval(() => {
+								let now = Date.now();
+								if( (now - progLast) > 4000) {
+									$("#spinner").show();
+									$("#progress-bar").hide();
+								}
+							},1000);
+						}
+							*/
+						let pct = msg.Value.Progress.Pct > 100 ? 100: msg.Value.Progress.Pct;
+						$job.find('.progress-bar > span').css("width", pct + "%")
+							.text(pct.toFixed(1) + "%");
+						$job.find('.eta').text( msg.Value.Progress.ETA );
+						if( msg.Value.Progress.FileSize !== '' ) {
+							$job.find('#filesize').text( msg.Value.Progress.FileSize + " MB" );
+						}
 					}
-					let pct = msg.Value.Pct > 100 ? 100: msg.Value.Pct;
-					$("#progress-bar > span").css("width", pct + "%")
-						.text(pct.toFixed(1) + "%");
-					$("#eta").text( msg.Value.ETA );
-					if( msg.Value.FileSize !== '' ) {
-						$("#filesize").text( msg.Value.FileSize + " MB" );
-					}
-					break;
-				case 'info':
-					$("#output").show();
-					$("#title").text( msg.Value.Title );
-					let bytes = parseFloat(msg.Value.FileSize)
-					$("#filesize").text( (bytes / 1024 / 1024).toFixed(2) + " MB" );
 					break;
 				case 'link_stream':
 					if(!isPlaying()) {
@@ -272,7 +290,7 @@ $(function(){
 		$("#controls").show();
 	}
 
-	$("#status").click(function() {
+	$('#output').on('click','.status', function() {
 		$(this).toggleClass("expand");
 	});
 

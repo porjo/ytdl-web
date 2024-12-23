@@ -65,6 +65,7 @@ type YTInfo struct {
 	SponsorBlockChapters []interface{} `json:"sponsorblock_chapters"`
 }
 type Info struct {
+	Id           int64
 	Title        string
 	Artist       string
 	Description  string
@@ -72,13 +73,18 @@ type Info struct {
 	Extension    string
 	DownloadURL  string
 	SponsorBlock bool
+
+	Progress Progress
 }
 
 type Progress struct {
-	Id       int64
 	Pct      float32
 	FileSize string
 	ETA      string
+}
+type Misc struct {
+	Id  int64
+	Msg string
 }
 
 type Download struct {
@@ -94,11 +100,9 @@ type Download struct {
 	sponsorBlock     bool
 	sponsorBlockCats string
 	ytCmd            string
-
-	outputStarted bool
 }
 
-func NewDownload(webroot, outPath string, sponsorBlock bool, sponsorBlockCats string, ytCmd string, maxProcessTime time.Duration) *Download {
+func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool, sponsorBlockCats string, ytCmd string, maxProcessTime time.Duration) *Download {
 
 	if maxProcessTime < time.Second*30 {
 		maxProcessTime = DefaultMaxProcessTime
@@ -115,30 +119,25 @@ func NewDownload(webroot, outPath string, sponsorBlock bool, sponsorBlockCats st
 	dl.inChans = make(map[int64]chan websocket.Msg)
 	dl.OutChan = make(chan websocket.Msg)
 
-	return dl
-}
-
-func (yt *Download) StartOutput(ctx context.Context) error {
-
-	if yt.outputStarted {
-		return fmt.Errorf("output already started")
-	}
-
 	go func() {
 		log.Printf("output monitor starting")
 		defer log.Printf("output monitor closing")
-		defer close(yt.OutChan)
+		defer close(dl.OutChan)
+
+		ticker := time.NewTicker(time.Millisecond * 10)
+		defer ticker.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			default:
-				yt.Lock()
-				for _, inCh := range yt.inChans {
+			case <-ticker.C:
+				dl.Lock()
+				for _, inCh := range dl.inChans {
 					select {
 					case m := <-inCh:
 						select {
-						case yt.OutChan <- m:
+						case dl.OutChan <- m:
 						default:
 							// don't block if we can't write to the channel
 						}
@@ -146,13 +145,12 @@ func (yt *Download) StartOutput(ctx context.Context) error {
 						// don't block if we can't read from the channel
 					}
 				}
-				yt.Unlock()
+				dl.Unlock()
 			}
 		}
 	}()
 
-	yt.outputStarted = true
-	return nil
+	return dl
 }
 
 func (yt *Download) Work(j *jobs.Job) {
@@ -271,12 +269,14 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 			return fmt.Errorf("info file json unmarshal error: %s", err)
 		}
 
+		info.Id = id
 		info.Title = ytInfo.Title
 		info.Artist = ytInfo.Channel
 		if info.Artist == "" {
 			info.Artist = ytInfo.Series
 		}
-		info.Description = ytInfo.Description
+		// description is mostly ads!
+		//info.Description = ytInfo.Description
 		info.FileSize = ytInfo.FileSize
 		info.Extension = ytInfo.Extension
 		info.SponsorBlock = len(ytInfo.SponsorBlockChapters) > 0
@@ -317,28 +317,43 @@ loop:
 
 			p := getYTProgress(line)
 			if p != nil {
-				p.Id = id
 				if startDownload.IsZero() {
 					startDownload = time.Now()
 				}
 				if restartCh != nil {
 					if time.Since(startDownload) > time.Second*5 && p.Pct < 10 {
 						close(restartCh)
-						msg := "Restarting download...\n"
-						log.Print(msg)
-						m := websocket.Msg{Key: "unknown", Value: msg}
+						misc := Misc{
+							Id:  id,
+							Msg: "Restarting download...\n",
+						}
+						log.Print(misc)
+						m := websocket.Msg{Key: "unknown", Value: misc}
 						outCh <- m
 						return nil
 					}
 				}
 
 				if time.Since(lastOut) > 500*time.Millisecond {
-					m := websocket.Msg{Key: "progress", Value: *p}
+					m := websocket.Msg{
+						Key: "info",
+						Value: Info{
+							Id:       id,
+							Artist:   info.Artist,
+							Title:    info.Title,
+							FileSize: info.FileSize,
+							Progress: *p,
+						},
+					}
 					outCh <- m
 					lastOut = time.Now()
 				}
 			} else {
-				m := websocket.Msg{Key: "unknown", Value: line}
+				misc := Misc{
+					Id:  id,
+					Msg: line,
+				}
+				m := websocket.Msg{Key: "unknown", Value: misc}
 				outCh <- m
 			}
 		}
@@ -392,8 +407,11 @@ loop:
 			return err
 		}
 		m := websocket.Msg{
-			Key:   "unknown",
-			Value: fmt.Sprintf("opus file size %.2f MB\n", float32(fi.Size())*1e-6),
+			Key: "unknown",
+			Value: Misc{
+				Id:  id,
+				Msg: fmt.Sprintf("opus file size %.2f MB\n", float32(fi.Size())*1e-6),
+			},
 		}
 		outCh <- m
 	}
@@ -494,19 +512,27 @@ func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- webs
 					etaStr = eta.String()
 				}
 				m := websocket.Msg{
-					Key: "progress",
-					Value: Progress{
-						Id:  id,
-						Pct: pct,
-						ETA: etaStr,
+					Key: "info",
+					Value: Info{
+						Id:       id,
+						Artist:   info.Artist,
+						Title:    info.Title,
+						FileSize: info.FileSize,
+						Progress: Progress{
+							Pct: pct,
+							ETA: etaStr,
+						},
 					},
 				}
 				outCh <- m
 			}
 		}
 		m := websocket.Msg{
-			Key:   "unknown",
-			Value: fmt.Sprintf("opus file size %.2f MB\n", float32(opusFI.Size())*1e-6),
+			Key: "unknown",
+			Value: Misc{
+				Id:  id,
+				Msg: fmt.Sprintf("opus file size %.2f MB\n", float32(opusFI.Size())*1e-6),
+			},
 		}
 		outCh <- m
 		time.Sleep(3 * time.Second)
