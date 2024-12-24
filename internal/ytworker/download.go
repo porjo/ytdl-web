@@ -16,7 +16,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/porjo/ytdl-web/internal/command"
@@ -88,11 +87,8 @@ type Misc struct {
 }
 
 type Download struct {
-	sync.Mutex
-
 	OutChan chan websocket.Msg
 
-	inChans        map[int64]chan websocket.Msg
 	maxProcessTime time.Duration
 
 	webRoot          string
@@ -116,38 +112,12 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 		sponsorBlockCats: sponsorBlockCats,
 		ytCmd:            ytCmd,
 	}
-	dl.inChans = make(map[int64]chan websocket.Msg)
 	dl.OutChan = make(chan websocket.Msg)
 
 	go func() {
-		log.Printf("output monitor starting")
-		defer log.Printf("output monitor closing")
-		defer close(dl.OutChan)
-
-		ticker := time.NewTicker(time.Millisecond * 10)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				dl.Lock()
-				for _, inCh := range dl.inChans {
-					select {
-					case m := <-inCh:
-						select {
-						case dl.OutChan <- m:
-						default:
-							// don't block if we can't write to the channel
-						}
-					default:
-						// don't block if we can't read from the channel
-					}
-				}
-				dl.Unlock()
-			}
-		}
+		<-ctx.Done()
+		log.Printf("closing outchan")
+		close(dl.OutChan)
 	}()
 
 	return dl
@@ -155,11 +125,7 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 
 func (yt *Download) Work(j *jobs.Job) {
 
-	inCh := make(chan websocket.Msg)
 	id := time.Now().UnixMicro()
-	yt.Lock()
-	yt.inChans[id] = inCh
-	yt.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), yt.maxProcessTime)
 	defer cancel()
@@ -169,12 +135,8 @@ func (yt *Download) Work(j *jobs.Job) {
 		log.Printf("unable to parse job URL %q, %s", j.Payload, err)
 	}
 
-	yt.download(ctx, id, inCh, nil, url)
+	yt.download(ctx, id, yt.OutChan, nil, url)
 
-	yt.Lock()
-	delete(yt.inChans, id)
-	yt.Unlock()
-	close(inCh)
 }
 
 func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websocket.Msg, restartCh chan bool, url *url.URL) error {

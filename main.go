@@ -8,7 +8,9 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/porjo/ytdl-web/internal/jobs"
@@ -49,7 +51,17 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		log.Println("shutting down...")
+		cancel()
+		// wait a bit for things to shut down
+		time.Sleep(time.Second)
+		os.Exit(1)
+	}()
 
 	dl := ytworker.NewDownload(ctx, *webRoot, *outPath, *sponsorBlock, *sponsorBlockCats, *ytCmd, *maxProcessTime)
 	dispatcher := jobs.NewDispatcher(dl, 10)
@@ -79,6 +91,7 @@ func main() {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: HTTPWriteTimeout,
 	}
+
 	err = srv.ListenAndServe()
 	if err != nil {
 		log.Fatal(err)
