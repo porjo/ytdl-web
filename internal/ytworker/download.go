@@ -29,6 +29,11 @@ const (
 	MaxFileSize = 1 << 20 * 500 // 500 MiB
 
 	YtdlpSocketTimeoutSec = 10
+
+	KeyCompleted  = "completed"
+	KeyUnknown    = "unknown"
+	KeyInfo       = "info"
+	KeyLinkStream = "link_stream"
 )
 
 var (
@@ -249,7 +254,7 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 			return fmt.Errorf("filesize %d too large", info.FileSize)
 		}
 
-		m := websocket.Msg{Key: "info", Value: info}
+		m := websocket.Msg{Key: KeyInfo, Value: info}
 		outCh <- m
 		break
 	}
@@ -259,7 +264,7 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 		go getOpusFileSize(ctx, id, info, outCh, errCh, diskFileNameTmp+".opus", yt.outPath)
 	}
 
-	var startDownload time.Time
+	// var startDownload time.Time
 	lastOut := time.Now()
 	var line string
 	var open bool
@@ -284,27 +289,27 @@ loop:
 
 			p := getYTProgress(line)
 			if p != nil {
-				if startDownload.IsZero() {
-					startDownload = time.Now()
-				}
 				/*
-					if restartCh != nil {
-						if time.Since(startDownload) > time.Second*5 && p.Pct < 10 {
-							close(restartCh)
-							misc := Misc{
-								Id:  id,
-								Msg: "Restarting download...\n",
-							}
-							m := websocket.Msg{Key: "unknown", Value: misc}
-							outCh <- m
-							return nil
-						}
+					if startDownload.IsZero() {
+						startDownload = time.Now()
 					}
+						if restartCh != nil {
+							if time.Since(startDownload) > time.Second*5 && p.Pct < 10 {
+								close(restartCh)
+								misc := Misc{
+									Id:  id,
+									Msg: "Restarting download...\n",
+								}
+								m := websocket.Msg{Key: "unknown", Value: misc}
+								outCh <- m
+								return nil
+							}
+						}
 				*/
 
 				if time.Since(lastOut) > 500*time.Millisecond {
 					m := websocket.Msg{
-						Key: "info",
+						Key: KeyInfo,
 						Value: Info{
 							Id:       id,
 							Artist:   info.Artist,
@@ -321,7 +326,7 @@ loop:
 					Id:  id,
 					Msg: line,
 				}
-				m := websocket.Msg{Key: "unknown", Value: misc}
+				m := websocket.Msg{Key: KeyUnknown, Value: misc}
 				outCh <- m
 			}
 		}
@@ -375,7 +380,7 @@ loop:
 			return err
 		}
 		m := websocket.Msg{
-			Key: "unknown",
+			Key: KeyUnknown,
 			Value: Misc{
 				Id:  id,
 				Msg: fmt.Sprintf("opus file size %.2f MB\n", float32(fi.Size())*1e-6),
@@ -392,28 +397,18 @@ loop:
 	info.DownloadURL = filepath.Join(yt.outPath, filepath.Base(finalFileName))
 	// don't send link for forceOpus as that's handled in getOpusFileSize goroutine
 	if !forceOpus {
-		m := websocket.Msg{Key: "link_stream", Value: info}
+		m := websocket.Msg{Key: KeyLinkStream, Value: info}
 		outCh <- m
 	}
 
 	m := websocket.Msg{
-		Key: "completed",
+		Key: KeyCompleted,
 		Value: Misc{
 			Id:  id,
 			Msg: "",
 		},
 	}
 	outCh <- m
-
-	/*
-		// Send recently retrieved URLs
-		recentURLs, err := GetRecentURLs(ctx, ws.WebRoot, ws.OutPath, ws.Timeout)
-		if err != nil {
-			return fmt.Errorf("WS %s: GetRecentURLS err %w", ws.RemoteAddr, err)
-		}
-		m = websocket.Msg{Key: "recent", Value: recentURLs}
-		outCh <- m
-	*/
 
 	return nil
 }
@@ -468,7 +463,7 @@ func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- webs
 		// wait until we have some data before sending stream URL
 		if !streamURLSent && opusFI.Size() > 10000 {
 			info.DownloadURL = filepath.Join(webPath, "stream", "t", filepath.Base(filename))
-			m := websocket.Msg{Key: "link_stream", Value: info}
+			m := websocket.Msg{Key: KeyLinkStream, Value: info}
 			outCh <- m
 			streamURLSent = true
 		}
@@ -489,7 +484,7 @@ func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- webs
 					etaStr = eta.String()
 				}
 				m := websocket.Msg{
-					Key: "info",
+					Key: KeyInfo,
 					Value: Info{
 						Id:       id,
 						Artist:   info.Artist,
@@ -506,7 +501,7 @@ func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- webs
 			}
 		}
 		m := websocket.Msg{
-			Key: "unknown",
+			Key: KeyUnknown,
 			Value: Misc{
 				Id:  id,
 				Msg: fmt.Sprintf("opus file size %.2f MB\n", float32(opusFI.Size())*1e-6),

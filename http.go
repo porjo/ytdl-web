@@ -113,6 +113,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -124,6 +125,17 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				err := conn.writeMsg(m)
 				if err != nil {
 					errCh <- err
+				}
+				if m.Key == ytworker.KeyCompleted {
+					// on completion, also send recent URLs
+					gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
+					recentURLs, err := GetRecentURLs(gruCtx, ws.WebRoot, ws.OutPath, ws.FFProbeCmd)
+					if err != nil {
+						ws.logger.Error("GetRecentURLS error", "error", err)
+						return
+					}
+					m := iws.Msg{Key: "recent", Value: recentURLs}
+					conn.writeMsg(m)
 				}
 			case err := <-errCh:
 				if err != nil {
