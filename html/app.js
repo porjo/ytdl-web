@@ -66,27 +66,46 @@ $(function(){
 		}
 	});
 
-	function createJob (msg) {
+	function updateJob (msg) {
 		let $job = $('#job-' + msg.Value.Id);
 
+		let title = '';
+		if ('Title' in msg.Value) {
+			title = msg.Value.Title;
+		}
+
+		let fileSize = '';
+		if ('FileSize' in msg.Value) {
+			let bytes = msg.Value.FileSize;
+			fileSize = (bytes / 1024 / 1024).toFixed(2) + " MB";
+		}
+		let eta = '';
+		let pct = 0;
+
+		if ('Progress' in msg.Value) {
+			pct = msg.Value.Progress.Pct > 100 ? 100 : msg.Value.Progress.Pct;
+			eta = msg.Value.Progress.ETA;
+		}
+
 		if ($job.length == 0) {
-			let bytes  = msg.Value.FileSize;
-			if (bytes == 0 && 'Progress' in msg.Value) {
-				bytes = msg.Value.Progress.FileSize;
-			}
-			let fileSize = (bytes / 1024 / 1024).toFixed(2) + " MB";
 
 			$job = $('<div>', { id: 'job-' + msg.Value.Id, class: 'job' }).appendTo('#output');
-			$('<div>', { class: 'progress-bar', html: '<span>0%</span>' }).appendTo($job);
+			$('<div>', { class: 'progress-bar', html: '<span>' + pct + '%</span>' }).appendTo($job);
 			$('<div>', {
 				class: 'details', html:
-					'<label>Video Title:</label><span class="title">' + msg.Value.Title + '</span>' +
+					'<label>Video Title:</label><span class="title">' + title + '</span>' +
 					'<br>' +
-					'<label>ETA:</label><span class="eta"></span>' +
+					'<label>ETA:</label><span class="eta">' + eta + '</span>' +
 					'<br>' +
 					'<label>Size:</label><span class="filesize">' + fileSize + '</span>' +
 					'<div class="status"></div>'
 			}).appendTo($job);
+		} else {
+			$job.find('.title').text(title);
+			$job.find('.progress-bar > span').css("width", pct + "%")
+				.text(pct.toFixed(1) + "%");
+			$job.find('.eta').text(eta);
+			$job.find('.filesize').text(fileSize);
 		}
 		return $job
 	}
@@ -108,32 +127,19 @@ $(function(){
 				case 'unknown':
 					$("#output").show();
 					$("#spinner").hide();
-					var $job = createJob(msg);
+					var $job = updateJob(msg);
 					$job.find('.status').prepend(msg.Value.Msg);
 					break;
 				case 'completed':
 					$("#spinner").hide();
 					clearTimeout(progTimer);
-					var $job = createJob(msg);
+					var $job = updateJob(msg);
 					$job.remove();
 					break;
 				case 'info':
 					$("#output").show();
 					$("#spinner").hide();
-					var $job = createJob(msg);
-
-					let bytes  = msg.Value.FileSize;
-					if ('Progress' in msg.Value) {
-						let pct = msg.Value.Progress.Pct > 100 ? 100 : msg.Value.Progress.Pct;
-						$job.find('.progress-bar > span').css("width", pct + "%")
-							.text(pct.toFixed(1) + "%");
-						$job.find('.eta').text(msg.Value.Progress.ETA);
-						if (bytes == 0) {
-							bytes = msg.Value.Progress.FileSize;
-						}
-					}
-					let fileSize = (bytes / 1024 / 1024).toFixed(2) + " MB";
-					$job.find('#filesize').text(fileSize);
+					var $job = updateJob(msg);
 					break;
 				case 'link_stream':
 					if(!isPlaying()) {
