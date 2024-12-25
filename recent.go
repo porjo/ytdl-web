@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,11 +32,11 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath string, ffProbeCmd stri
 		if !file.IsDir() && file.Name() != ".README" && !strings.HasSuffix(file.Name(), ".json") {
 			ff, err := runFFprobe(ctx, ffProbeCmd, filepath.Join(webRoot, outPath, file.Name()))
 			if err != nil {
-				if errors.Is(context.DeadlineExceeded, err) {
-					log.Printf("ffprobe ran too long and was cancelled, error %s\n", err)
+				if errors.Is(err, context.DeadlineExceeded) {
+					slog.Info("ffprobe ran too long and was cancelled, error %s\n", err)
 
 				} else {
-					log.Printf("ffprobe error %s\n", err)
+					slog.Info("ffprobe error", "error", err)
 				}
 				continue
 			}
@@ -46,7 +46,7 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath string, ffProbeCmd stri
 			r.Title, r.Artist, _ = titleArtistDescription(ff)
 			i, err := file.Info()
 			if err != nil {
-				log.Print(err)
+				slog.Info(err.Error())
 				continue
 			}
 			r.Timestamp = i.ModTime()
@@ -64,7 +64,7 @@ func DeleteFiles(urls []string, webRoot string) error {
 		if err := os.Remove(path); err != nil {
 			return err
 		}
-		log.Printf("file removed: %s\n", path)
+		slog.Info("file removed", "file", path)
 	}
 	return nil
 }
@@ -86,7 +86,7 @@ func fileCleanup(outPath string, expiry time.Duration) {
 			if err := os.Remove(path); err != nil {
 				return err
 			}
-			log.Printf("old file removed: %s\n", path)
+			slog.Info("old file removed", "file", path)
 		}
 		return nil
 	}
@@ -96,7 +96,7 @@ func fileCleanup(outPath string, expiry time.Duration) {
 	for _ = range tickChan {
 		err := filepath.Walk(outPath, visit)
 		if err != nil {
-			log.Printf("file cleanup error: %s\n", err)
+			slog.Error("file cleanup error", "error", err)
 		}
 	}
 }

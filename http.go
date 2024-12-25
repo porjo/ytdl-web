@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"path"
 	"strings"
@@ -59,20 +59,24 @@ type wsHandler struct {
 	FFProbeCmd string
 	Dispatcher *jobs.Dispatcher
 	YTworker   *ytworker.Download
+
+	logger *slog.Logger
 }
 
 func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	ws.logger = slog.With("ws", ws.RemoteAddr)
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
 	gconn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		slog.Error(err.Error())
 		return
 	}
 	ws.RemoteAddr = gconn.RemoteAddr().String()
-	log.Printf("WS %s: Client connected\n", ws.RemoteAddr)
+	ws.logger.Info("client connected")
 
 	// wrap Gorilla conn with our conn so we can extend functionality
 	conn := Conn{sync.Mutex{}, gconn}
@@ -89,12 +93,12 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("WS %s: ping, context done\n", remoteAddr)
+				ws.logger.Info("ping, context done", "ws", remoteAddr)
 				return
 			case <-ticker.C:
 				// WriteControl can be called concurrently
 				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WSWriteWait)); err != nil {
-					log.Printf("WS %s: ping client, err %s\n", remoteAddr, err)
+					ws.logger.Error("ping client error", "error", err)
 					cancel()
 					return
 				}
@@ -136,7 +140,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
 	recentURLs, err := GetRecentURLs(gruCtx, ws.WebRoot, ws.OutPath, ws.FFProbeCmd)
 	if err != nil {
-		log.Printf("WS %s: GetRecentURLS err %s\n", ws.RemoteAddr, err)
+		ws.logger.Error("GetRecentURLS error", "error", err)
 		return
 	}
 	m := iws.Msg{Key: "recent", Value: recentURLs}
@@ -145,11 +149,11 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		msgType, raw, err := conn.ReadMessage()
 		if err != nil {
-			log.Printf("WS %s: ReadMessage err %s\n", ws.RemoteAddr, err)
+			ws.logger.Error("ReadMessage error", "error", err)
 			return
 		}
 
-		log.Printf("WS %s: read message %s\n", ws.RemoteAddr, string(raw))
+		ws.logger.Debug("read message", "msg", string(raw))
 
 		if msgType == websocket.TextMessage {
 			wg.Add(1)
@@ -158,22 +162,22 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				var req Request
 				err = json.Unmarshal(raw, &req)
 				if err != nil {
-					log.Printf("json unmarshal error: %s\n", err)
+					ws.logger.Error("json unmarshal error", "error", err)
 					return
 				}
 
 				err := ws.msgHandler(req)
 				if err != nil {
-					log.Printf("Error '%s'\n", err)
+					ws.logger.Error("error", "error", err)
 					errCh <- err
 				}
 			}()
 		} else {
-			log.Printf("unknown message type - close websocket\n")
+			ws.logger.Info("unknown message type - close websocket\n")
 			conn.Close()
 			return
 		}
-		log.Printf("WS %s: end main loop\n", ws.RemoteAddr)
+		ws.logger.Info("end main loop")
 	}
 }
 
@@ -184,7 +188,7 @@ func (c *Conn) writeMsg(val interface{}) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("WS %s: write message %s\n", c.RemoteAddr(), string(j))
+	slog.Info("write message", "ws", c.RemoteAddr(), "msg", string(j))
 	if err = c.WriteMessage(websocket.TextMessage, j); err != nil {
 		return err
 	}
@@ -261,12 +265,12 @@ func ServeStream(webRoot string) http.HandlerFunc {
 			// io.Copy doesn't return error on EOF
 			i, err := io.Copy(w, f)
 			if err != nil {
-				log.Printf("servestream copy err %s\n", err)
+				slog.Info("servestream copy error", "error", err)
 				return
 			}
 			if i == 0 {
 				if time.Since(lastData) > time.Duration(StreamSourceTimeout) {
-					log.Printf("servestream timeout\n")
+					slog.Info("servestream timeout", "timeout", StreamSourceTimeout)
 					return
 				}
 				time.Sleep(time.Duration(1 * time.Second))

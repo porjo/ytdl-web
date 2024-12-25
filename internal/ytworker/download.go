@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/url"
 	"os"
 	"path"
@@ -116,7 +116,7 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 
 	go func() {
 		<-ctx.Done()
-		log.Printf("closing outchan")
+		slog.Info("closing outchan")
 		close(dl.OutChan)
 	}()
 
@@ -132,7 +132,8 @@ func (yt *Download) Work(j *jobs.Job) {
 
 	url, err := url.Parse(j.Payload)
 	if err != nil {
-		log.Printf("unable to parse job URL %q, %s", j.Payload, err)
+		slog.Error("unable to parse job URL", "url", j.Payload, "error", err)
+		return
 	}
 
 	yt.download(ctx, id, yt.OutChan, nil, url)
@@ -156,7 +157,7 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 	urlSum := md5.Sum([]byte(url.String()))
 	diskFileNameTmp := filepath.Join(yt.webRoot, yt.outPath, "t", "ytdl-"+fmt.Sprintf("%x", urlSum))
 
-	log.Printf("Fetching url %s\n", url.String())
+	slog.Info("Fetching url", "url", url.String())
 	args := []string{
 		"--write-info-json",
 		"--max-filesize", fmt.Sprintf("%d", int(MaxFileSize)),
@@ -200,7 +201,7 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 	}
 	args = append(args, url.String())
 
-	log.Printf("Running command %v\n", append([]string{yt.ytCmd}, args...))
+	slog.Info("Running command", "command", append([]string{yt.ytCmd}, args...))
 	cmdOutCh, cmdErrCh, err := command.RunCommandCh(ctx, yt.ytCmd, args...)
 	if err != nil {
 		return err
@@ -289,7 +290,6 @@ loop:
 							Id:  id,
 							Msg: "Restarting download...\n",
 						}
-						log.Print(misc)
 						m := websocket.Msg{Key: "unknown", Value: misc}
 						outCh <- m
 						return nil
@@ -377,7 +377,7 @@ loop:
 		}
 		outCh <- m
 	}
-	log.Printf("rename %s to %s", diskFileNameTmp2, finalFileName)
+	slog.Info("rename file", "src", diskFileNameTmp2, "dst", finalFileName)
 	err = os.Rename(diskFileNameTmp2, finalFileName)
 	if err != nil {
 		return err
