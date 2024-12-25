@@ -480,7 +480,8 @@ func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- webs
 			mp3FI, err := os.Stat(strings.TrimSuffix(filename, filepath.Ext(filename)) + ".mp3")
 			if err == nil {
 				// Opus compression ratio from MP3 approximately 1:4
-				pct := (float32(opusFI.Size()) / (float32(mp3FI.Size()) / 4)) * 100
+				estTotal := mp3FI.Size() / 4
+				pct := (float32(opusFI.Size()) / float32(estTotal)) * 100
 				diff := time.Since(startTime)
 				etaStr := ""
 				if pct > 0 {
@@ -493,10 +494,11 @@ func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- webs
 						Id:       id,
 						Artist:   info.Artist,
 						Title:    info.Title,
-						FileSize: info.FileSize,
+						FileSize: estTotal,
 						Progress: Progress{
-							Pct: pct,
-							ETA: etaStr,
+							Pct:      pct,
+							FileSize: estTotal,
+							ETA:      etaStr,
 						},
 					},
 				}
