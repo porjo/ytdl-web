@@ -55,19 +55,19 @@ var (
 )
 
 type YTInfo struct {
-	Title                string
-	Channel              string
-	Series               string
-	Description          string
+	Title   string
+	Channel string
+	Series  string
+	//Description          string
 	FileSize             int64
 	Extension            string        `json:"ext"`
 	SponsorBlockChapters []interface{} `json:"sponsorblock_chapters"`
 }
 type Info struct {
-	Id           int64
-	Title        string
-	Artist       string
-	Description  string
+	Id     int64
+	Title  string
+	Artist string
+	//Description  string
 	FileSize     int64
 	Extension    string
 	DownloadURL  string
@@ -78,7 +78,7 @@ type Info struct {
 
 type Progress struct {
 	Pct      float32
-	FileSize string
+	FileSize int64
 	ETA      string
 }
 type Misc struct {
@@ -390,7 +390,13 @@ loop:
 		outCh <- m
 	}
 
-	m := websocket.Msg{Key: "completed", Value: "true"}
+	m := websocket.Msg{
+		Key: "completed",
+		Value: Misc{
+			Id:  id,
+			Msg: "",
+		},
+	}
 	outCh <- m
 
 	/*
@@ -413,19 +419,19 @@ func getYTProgress(v string) *Progress {
 	if len(matches) == 5 {
 		p = new(Progress)
 		downloaded, _ := strconv.Atoi(matches[1])
-		total := 0
+		var total int64
 		// if total_bytes is missing, try total_bytes_estimate
 		if matches[2] != "NA" {
-			total, _ = strconv.Atoi(matches[2])
+			total, _ = strconv.ParseInt(matches[4], 10, 64)
 		} else {
 			// for some reason we get decimal for the estimated bytes
 			totalf, _ := strconv.ParseFloat(matches[3], 64)
 			// don't care about loss of precision
-			total = int(totalf)
+			total = int64(totalf)
 		}
 		eta, _ := strconv.Atoi(matches[4])
 		p.Pct = float32(downloaded) / float32(total) * 100.0
-		p.FileSize = fmt.Sprintf("%.2f", float64(total)/(1024.0*1024.0))
+		p.FileSize = total
 		p.ETA = fmt.Sprintf("%v", time.Duration(eta)*time.Second)
 	}
 	return p

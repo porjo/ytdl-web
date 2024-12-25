@@ -37,14 +37,13 @@ $(function(){
 	$("#go-button").click(function() {
 		if (ws.readyState === 1) {
 			$("#spinner").show();
-			$("#input-form").hide();
 			$("#progress-bar > span").css("width", "0%")
 				.text("0%");
 			let url = $("#url").val();
 			let val = {URL: url};
 			ws.send(JSON.stringify(val));
 			$("#status").prepend("Requesting URL " + url + "\n");
-			$(this).prop('disabled', true);
+			//$(this).prop('disabled', true);
 		} else {
 			$("#status").prepend("socket not ready\n")
 		}
@@ -67,6 +66,30 @@ $(function(){
 		}
 	});
 
+	function createJob (msg) {
+		let $job = $('#job-' + msg.Value.Id);
+
+		if ($job.length == 0) {
+			let bytes  = msg.Value.FileSize;
+			if (bytes == 0 && 'Progress' in msg.Value) {
+				bytes = msg.Value.Progress.FileSize;
+			}
+			let fileSize = (bytes / 1024 / 1024).toFixed(2) + " MB";
+
+			$job = $('<div>', { id: 'job-' + msg.Value.Id, class: 'job' }).appendTo('#output');
+			$('<div>', { class: 'progress-bar', html: '<span>0%</span>' }).appendTo($job);
+			$('<div>', {
+				class: 'details', html:
+					'<label>Video Title:</label><span class="title">' + msg.Value.Title + '</span>' +
+					'<br>' +
+					'<label>ETA:</label><span class="eta"></span>' +
+					'<br>' +
+					'<label>Size:</label><span class="filesize">' + fileSize + '</span>' +
+					'<div class="status"></div>'
+			}).appendTo($job);
+		}
+		return $job
+	}
 
 	/*
 	ws.onopen = function() {
@@ -85,58 +108,35 @@ $(function(){
 				case 'unknown':
 					console.log('unknown', msg)
 					$("#output").show();
-					var $job = $('#job-' + msg.Value.Id);
+					$("#spinner").hide();
+					var $job = createJob(msg);
 					$job.find('.status').prepend(msg.Value.Msg);
 					break;
 				case 'completed':
 					$("#spinner").hide();
-					$("#output").hide();
 					clearTimeout(progTimer);
+					var $job = createJob(msg);
+					$job.remove();
 					break;
 				case 'info':
 					console.log('info', msg);
 
 					$("#output").show();
 					$("#spinner").hide();
-					var $job = $('#job-' + msg.Value.Id);
+					var $job = createJob(msg);
 
-					if( $job.length == 0) {
-						let bytes = parseFloat(msg.Value.FileSize);
-						let fileSize = (bytes / 1024 / 1024).toFixed(2) + " MB";
-
-						var $job = $('<div>', { id: 'job-' + msg.Value.Id, class: 'job' }).appendTo('#output');
-						$('<div>', { class: 'progress-bar', html: '<span>0%</span>' }).appendTo($job);
-						$('<div>', {
-							class: 'details', html:
-								'<label>Video Title:</label><span class="title">' + msg.Value.Title + '</span>' +
-								'<br>' +
-								'<label>ETA:</label><span class="eta"></span>' +
-								'<br>' +
-								'<label>Size:</label><span class="filesize">' + fileSize + '</span>' +
-								'<div class="status"></div>'
-						}).appendTo($job);
-					} else {
-
-						/*
-						progLast = Date.now();
-						if(!progTimer) {
-							progTimer = setInterval(() => {
-								let now = Date.now();
-								if( (now - progLast) > 4000) {
-									$("#spinner").show();
-									$("#progress-bar").hide();
-								}
-							},1000);
-						}
-							*/
-						let pct = msg.Value.Progress.Pct > 100 ? 100: msg.Value.Progress.Pct;
+					let bytes  = msg.Value.FileSize;
+					if ('Progress' in msg.Value) {
+						let pct = msg.Value.Progress.Pct > 100 ? 100 : msg.Value.Progress.Pct;
 						$job.find('.progress-bar > span').css("width", pct + "%")
 							.text(pct.toFixed(1) + "%");
-						$job.find('.eta').text( msg.Value.Progress.ETA );
-						if( msg.Value.Progress.FileSize !== '' ) {
-							$job.find('#filesize').text( msg.Value.Progress.FileSize + " MB" );
+						$job.find('.eta').text(msg.Value.Progress.ETA);
+						if (bytes == 0) {
+							bytes = msg.Value.Progress.FileSize;
 						}
 					}
+					let fileSize = (bytes / 1024 / 1024).toFixed(2) + " MB";
+					$job.find('#filesize').text(fileSize);
 					break;
 				case 'link_stream':
 					if(!isPlaying()) {
