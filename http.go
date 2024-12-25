@@ -65,8 +65,6 @@ type wsHandler struct {
 
 func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	ws.logger = slog.With("ws", ws.RemoteAddr)
-
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
@@ -76,6 +74,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ws.RemoteAddr = gconn.RemoteAddr().String()
+	ws.logger = slog.With("ws", ws.RemoteAddr)
 	ws.logger.Info("client connected")
 
 	// wrap Gorilla conn with our conn so we can extend functionality
@@ -85,7 +84,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	wg.Add(1)
 	// setup ping/pong to keep connection open
-	go func(remoteAddr string) {
+	go func() {
 		ticker := time.NewTicker(WSPingInterval)
 		defer ticker.Stop()
 		defer wg.Done()
@@ -93,7 +92,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for {
 			select {
 			case <-ctx.Done():
-				ws.logger.Info("ping, context done", "ws", remoteAddr)
+				ws.logger.Info("ping, context done")
 				return
 			case <-ticker.C:
 				// WriteControl can be called concurrently
@@ -104,7 +103,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-	}(ws.RemoteAddr)
+	}()
 
 	errCh := make(chan error)
 	defer close(errCh)

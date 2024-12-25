@@ -106,7 +106,6 @@ $(function(){
 					$("#status").prepend("Error: " + msg.Value + "\n");
 					break;
 				case 'unknown':
-					console.log('unknown', msg)
 					$("#output").show();
 					$("#spinner").hide();
 					var $job = createJob(msg);
@@ -119,8 +118,6 @@ $(function(){
 					$job.remove();
 					break;
 				case 'info':
-					console.log('info', msg);
-
 					$("#output").show();
 					$("#spinner").hide();
 					var $job = createJob(msg);

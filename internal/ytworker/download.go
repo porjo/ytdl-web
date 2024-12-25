@@ -117,6 +117,7 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 	go func() {
 		<-ctx.Done()
 		slog.Info("closing outchan")
+		time.Sleep(time.Second)
 		close(dl.OutChan)
 	}()
 
@@ -265,6 +266,9 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 loop:
 	for {
 		select {
+		case <-ctx.Done():
+			slog.Info("download, context done")
+			return nil
 		case err := <-errCh:
 			return err
 		case err, open := <-cmdErrCh:
@@ -283,18 +287,20 @@ loop:
 				if startDownload.IsZero() {
 					startDownload = time.Now()
 				}
-				if restartCh != nil {
-					if time.Since(startDownload) > time.Second*5 && p.Pct < 10 {
-						close(restartCh)
-						misc := Misc{
-							Id:  id,
-							Msg: "Restarting download...\n",
+				/*
+					if restartCh != nil {
+						if time.Since(startDownload) > time.Second*5 && p.Pct < 10 {
+							close(restartCh)
+							misc := Misc{
+								Id:  id,
+								Msg: "Restarting download...\n",
+							}
+							m := websocket.Msg{Key: "unknown", Value: misc}
+							outCh <- m
+							return nil
 						}
-						m := websocket.Msg{Key: "unknown", Value: misc}
-						outCh <- m
-						return nil
 					}
-				}
+				*/
 
 				if time.Since(lastOut) > 500*time.Millisecond {
 					m := websocket.Msg{
@@ -415,6 +421,8 @@ loop:
 func getYTProgress(v string) *Progress {
 	matches := ytProgressRe.FindStringSubmatch(v)
 
+	slog.Debug("yt progress matches", "matches", matches)
+
 	var p *Progress
 	if len(matches) == 5 {
 		p = new(Progress)
@@ -422,7 +430,7 @@ func getYTProgress(v string) *Progress {
 		var total int64
 		// if total_bytes is missing, try total_bytes_estimate
 		if matches[2] != "NA" {
-			total, _ = strconv.ParseInt(matches[4], 10, 64)
+			total, _ = strconv.ParseInt(matches[2], 10, 64)
 		} else {
 			// for some reason we get decimal for the estimated bytes
 			totalf, _ := strconv.ParseFloat(matches[3], 64)
