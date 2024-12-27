@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"fmt"
 	"io"
+	"log/slog"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -21,7 +21,7 @@ func RunCommand(ctx context.Context, command string, flags ...string) ([]byte, e
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
-			fmt.Printf("runcommand exit error, stderr '%v'\n", string(ee.Stderr))
+			slog.Debug("runcommand exit error", "stderr", string(ee.Stderr))
 		}
 	}
 	return out, err
@@ -47,10 +47,10 @@ func RunCommandCh(ctx context.Context, command string, flags ...string) (chan st
 	go func() {
 		defer close(outCh)
 		defer close(errCh)
+		slog.Debug("command start", "command", command)
 		err := cmd.Start()
 		if err != nil {
-			errCh <- err
-
+			nonblockingChSend(errCh, err)
 		}
 
 		wg := sync.WaitGroup{}
@@ -59,36 +59,51 @@ func RunCommandCh(ctx context.Context, command string, flags ...string) (chan st
 			defer wg.Done()
 			for {
 				line, err := stdoutBuf.ReadString('\n')
-				outCh <- line
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
-						errCh <- err
+						nonblockingChSend(errCh, err)
 					}
 					return
 				}
+				nonblockingChSend(outCh, line)
 			}
 		}()
 
-		for {
-			line, err := stderrBuf.ReadString('\n')
-			outCh <- line
-			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					errCh <- err
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				line, err := stderrBuf.ReadString('\n')
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						nonblockingChSend(errCh, err)
+					}
+					break
 				}
-				break
+				nonblockingChSend(outCh, line)
 			}
-		}
+		}()
 
+		slog.Debug("wait for stdout/stderr readers to end", "command", command)
 		wg.Wait()
 
+		slog.Debug("command wait", "command", command)
 		err = cmd.Wait()
 		if err != nil {
-			errCh <- err
+			nonblockingChSend(errCh, err)
 		}
+		slog.Debug("command wait, done", "command", command)
 		// kill any orphaned children upon completion, ignore kill error
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	}()
 
 	return outCh, errCh, nil
+}
+
+func nonblockingChSend[T any](ch chan T, msg T) {
+	select {
+	case ch <- msg:
+	default:
+		slog.Warn("channel was blocked, message discarded", "msg", msg)
+	}
 }

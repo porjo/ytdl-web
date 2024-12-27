@@ -167,22 +167,18 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ws.logger.Debug("read message", "msg", string(raw))
 
 		if msgType == websocket.TextMessage {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				var req Request
-				err = json.Unmarshal(raw, &req)
-				if err != nil {
-					ws.logger.Error("json unmarshal error", "error", err)
-					return
-				}
+			var req Request
+			err = json.Unmarshal(raw, &req)
+			if err != nil {
+				ws.logger.Error("json unmarshal error", "error", err)
+				return
+			}
 
-				err := ws.msgHandler(req)
-				if err != nil {
-					ws.logger.Error("error", "error", err)
-					errCh <- err
-				}
-			}()
+			err := ws.msgHandler(req)
+			if err != nil {
+				ws.logger.Error("error", "error", err)
+				errCh <- err
+			}
 		} else {
 			ws.logger.Info("unknown message type - close websocket\n")
 			conn.Close()
@@ -199,7 +195,7 @@ func (c *Conn) writeMsg(val interface{}) error {
 	if err != nil {
 		return err
 	}
-	slog.Info("write message", "ws", c.RemoteAddr(), "msg", string(j))
+	slog.Debug("write message", "ws", c.RemoteAddr(), "msg", string(j))
 	if err = c.WriteMessage(websocket.TextMessage, j); err != nil {
 		return err
 	}
@@ -252,11 +248,11 @@ func (ws *wsHandler) msgHandler(req Request) error {
 //
 // There are a couple of challenges to overcome:
 //   - how to know when the encoding has finished? The current solution is to wait StreamSourceTimeoutSec and
+//     end the handler if no data is copied in that time. Is that the best approach?
+//   - how to handle clients that delay requesting more data? In this case ResponseWriter blocks the
+//     Copy operation.
 //
-// end the handler if no data is copied in that time. Is that the best approach?
-//   - how to handle clients that delay requesting more data? In this case ResponseWriter blocks the Copy operation.
-//
-// I think the only solution is to set WriteTimeout on http.Sever
+// I think the only solution is to set WriteTimeout on http.Server
 func ServeStream(webRoot string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dir := http.Dir(webRoot)
@@ -280,11 +276,11 @@ func ServeStream(webRoot string) http.HandlerFunc {
 				return
 			}
 			if i == 0 {
-				if time.Since(lastData) > time.Duration(StreamSourceTimeout) {
+				if time.Since(lastData) > StreamSourceTimeout {
 					slog.Info("servestream timeout", "timeout", StreamSourceTimeout)
 					return
 				}
-				time.Sleep(time.Duration(1 * time.Second))
+				time.Sleep(time.Second)
 			} else {
 				lastData = time.Now()
 			}

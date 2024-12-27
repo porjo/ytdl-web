@@ -101,6 +101,8 @@ type Download struct {
 	sponsorBlock     bool
 	sponsorBlockCats string
 	ytCmd            string
+
+	ctx context.Context
 }
 
 func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool, sponsorBlockCats string, ytCmd string, maxProcessTime time.Duration) *Download {
@@ -116,6 +118,7 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 		sponsorBlock:     sponsorBlock,
 		sponsorBlockCats: sponsorBlockCats,
 		ytCmd:            ytCmd,
+		ctx:              ctx,
 	}
 	dl.OutChan = make(chan websocket.Msg)
 
@@ -133,7 +136,7 @@ func (yt *Download) Work(j *jobs.Job) {
 
 	id := time.Now().UnixMicro()
 
-	ctx, cancel := context.WithTimeout(context.Background(), yt.maxProcessTime)
+	ctx, cancel := context.WithTimeout(yt.ctx, yt.maxProcessTime)
 	defer cancel()
 
 	url, err := url.Parse(j.Payload)
@@ -210,54 +213,62 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 	slog.Info("Running command", "command", append([]string{yt.ytCmd}, args...))
 	cmdOutCh, cmdErrCh, err := command.RunCommandCh(ctx, yt.ytCmd, args...)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			slog.Warn("command terminated due to cancelled context")
+		}
 		return err
 	}
 
-	var info Info
+	infoFileName := ""
 	count := 0
 	for {
-		count++
+
+		infoFileName = diskFileNameTmp + ".info.json"
+
+		time.Sleep(500 * time.Millisecond)
+		_, err := os.Stat(infoFileName)
+		if err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+
 		if count > 20 {
 			return fmt.Errorf("waited too long for info file")
 		}
-
-		infoFileName := diskFileNameTmp + ".info.json"
-
-		time.Sleep(500 * time.Millisecond)
-		if _, err := os.Stat(infoFileName); os.IsNotExist(err) {
-			continue
-		}
-		raw, err := os.ReadFile(infoFileName)
-		if err != nil {
-			return fmt.Errorf("info file read error: %s", err)
-		}
-
-		var ytInfo YTInfo
-		err = json.Unmarshal(raw, &ytInfo)
-		if err != nil {
-			return fmt.Errorf("info file json unmarshal error: %s", err)
-		}
-
-		info.Id = id
-		info.Title = ytInfo.Title
-		info.Artist = ytInfo.Channel
-		if info.Artist == "" {
-			info.Artist = ytInfo.Series
-		}
-		// description is mostly ads!
-		//info.Description = ytInfo.Description
-		info.FileSize = ytInfo.FileSize
-		info.Extension = ytInfo.Extension
-		info.SponsorBlock = len(ytInfo.SponsorBlockChapters) > 0
-
-		if info.FileSize > MaxFileSize {
-			return fmt.Errorf("filesize %d too large", info.FileSize)
-		}
-
-		m := websocket.Msg{Key: KeyInfo, Value: info}
-		outCh <- m
-		break
+		count++
 	}
+
+	raw, err := os.ReadFile(infoFileName)
+	if err != nil {
+		return fmt.Errorf("info file read error: %s", err)
+	}
+
+	var ytInfo YTInfo
+	err = json.Unmarshal(raw, &ytInfo)
+	if err != nil {
+		return fmt.Errorf("info file json unmarshal error: %s", err)
+	}
+
+	var info Info
+	info.Id = id
+	info.Title = ytInfo.Title
+	info.Artist = ytInfo.Channel
+	if info.Artist == "" {
+		info.Artist = ytInfo.Series
+	}
+	// description is mostly ads!
+	//info.Description = ytInfo.Description
+	info.FileSize = ytInfo.FileSize
+	info.Extension = ytInfo.Extension
+	info.SponsorBlock = len(ytInfo.SponsorBlockChapters) > 0
+
+	if info.FileSize > MaxFileSize {
+		return fmt.Errorf("filesize %d too large", info.FileSize)
+	}
+
+	m := websocket.Msg{Key: KeyInfo, Value: info}
+	outCh <- m
 
 	// output size of opus file as it gets written
 	if forceOpus {
@@ -401,7 +412,7 @@ loop:
 		outCh <- m
 	}
 
-	m := websocket.Msg{
+	m = websocket.Msg{
 		Key: KeyCompleted,
 		Value: Misc{
 			Id:  id,
@@ -416,7 +427,7 @@ loop:
 func getYTProgress(v string) *Progress {
 	matches := ytProgressRe.FindStringSubmatch(v)
 
-	slog.Debug("yt progress matches", "matches", matches)
+	//slog.Debug("yt progress matches", "matches", matches)
 
 	var p *Progress
 	if len(matches) == 5 {
@@ -443,71 +454,73 @@ func getYTProgress(v string) *Progress {
 func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- websocket.Msg, errCh chan error, filename, webPath string) {
 	var startTime time.Time
 	streamURLSent := false
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
-		}
-		opusFI, err := os.Stat(filename)
-		// abort on errors except for ErrNotExist
-		if err != nil {
-			if !errors.Is(err, fs.ErrNotExist) {
-				errCh <- fmt.Errorf("error getting stat on opus file '%s': %w", filename, err)
-				return
+		case <-ticker.C:
+			opusFI, err := os.Stat(filename)
+			// abort on errors except for ErrNotExist
+			if err != nil {
+				if !errors.Is(err, fs.ErrNotExist) {
+					errCh <- fmt.Errorf("error getting stat on opus file '%s': %w", filename, err)
+					return
+				}
+				continue
 			}
-			time.Sleep(time.Second)
-			continue
-		}
 
-		// wait until we have some data before sending stream URL
-		if !streamURLSent && opusFI.Size() > 10000 {
-			info.DownloadURL = filepath.Join(webPath, "stream", "t", filepath.Base(filename))
-			m := websocket.Msg{Key: KeyLinkStream, Value: info}
-			outCh <- m
-			streamURLSent = true
-		}
-
-		if startTime.IsZero() {
-			startTime = time.Now()
-		}
-		if info.Extension == "mp3" {
-			mp3FI, err := os.Stat(strings.TrimSuffix(filename, filepath.Ext(filename)) + ".mp3")
-			if err == nil {
-				// Opus compression ratio from MP3 approximately 1:4
-				estTotal := mp3FI.Size() / 4
-				pct := (float32(opusFI.Size()) / float32(estTotal)) * 100
-				diff := time.Since(startTime)
-				etaStr := ""
-				if pct > 0 {
-					eta := time.Duration((float32(diff) / pct) * (100 - pct)).Round(time.Second)
-					etaStr = eta.String()
-				}
-				m := websocket.Msg{
-					Key: KeyInfo,
-					Value: Info{
-						Id:       id,
-						Artist:   info.Artist,
-						Title:    info.Title,
-						FileSize: estTotal,
-						Progress: Progress{
-							Pct:      pct,
-							FileSize: estTotal,
-							ETA:      etaStr,
-						},
-					},
-				}
+			// wait until we have some data before sending stream URL
+			if !streamURLSent && opusFI.Size() > 10000 {
+				info.DownloadURL = filepath.Join(webPath, "stream", "t", filepath.Base(filename))
+				m := websocket.Msg{Key: KeyLinkStream, Value: info}
 				outCh <- m
+				streamURLSent = true
 			}
+
+			if startTime.IsZero() {
+				startTime = time.Now()
+			}
+			if info.Extension == "mp3" {
+				mp3FI, err := os.Stat(strings.TrimSuffix(filename, filepath.Ext(filename)) + ".mp3")
+				if err == nil {
+					// Opus compression ratio from MP3 approximately 1:4
+					estTotal := mp3FI.Size() / 4
+					pct := (float32(opusFI.Size()) / float32(estTotal)) * 100
+					diff := time.Since(startTime)
+					etaStr := ""
+					if pct > 0 {
+						eta := time.Duration((float32(diff) / pct) * (100 - pct)).Round(time.Second)
+						etaStr = eta.String()
+					}
+					m := websocket.Msg{
+						Key: KeyInfo,
+						Value: Info{
+							Id:       id,
+							Artist:   info.Artist,
+							Title:    info.Title,
+							FileSize: estTotal,
+							Progress: Progress{
+								Pct:      pct,
+								FileSize: estTotal,
+								ETA:      etaStr,
+							},
+						},
+					}
+					outCh <- m
+				}
+			}
+			m := websocket.Msg{
+				Key: KeyUnknown,
+				Value: Misc{
+					Id:  id,
+					Msg: fmt.Sprintf("opus file size %.2f MB\n", float32(opusFI.Size())*1e-6),
+				},
+			}
+			outCh <- m
 		}
-		m := websocket.Msg{
-			Key: KeyUnknown,
-			Value: Misc{
-				Id:  id,
-				Msg: fmt.Sprintf("opus file size %.2f MB\n", float32(opusFI.Size())*1e-6),
-			},
-		}
-		outCh <- m
-		time.Sleep(3 * time.Second)
 	}
 }

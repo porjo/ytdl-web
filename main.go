@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/porjo/ytdl-web/internal/jobs"
@@ -63,17 +62,6 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		slog.Info("shutting down...")
-		cancel()
-		// wait a bit for things to shut down
-		time.Sleep(time.Second)
-		os.Exit(1)
-	}()
-
 	dl := ytworker.NewDownload(ctx, *webRoot, *outPath, *sponsorBlock, *sponsorBlockCats, *ytCmd, *maxProcessTime)
 	dispatcher := jobs.NewDispatcher(dl, 10)
 	go func() {
@@ -103,9 +91,26 @@ func main() {
 		WriteTimeout: HTTPWriteTimeout,
 	}
 
-	err = srv.ListenAndServe()
-	if err != nil {
-		slog.Error(err.Error())
-		os.Exit(1)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			slog.Error("http server listen", "error", err)
+		}
+	}()
+
+	// Setting up signal capturing
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
+
+	// Waiting for SIGINT (kill -2)
+	<-stop
+	slog.Info("shutting down")
+	cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		slog.Error("http server shutdown", "error", err)
 	}
+
+	// wait a bit for things to shut down
+	time.Sleep(time.Second)
+
 }
