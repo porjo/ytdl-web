@@ -75,7 +75,8 @@ func main() {
 		OutPath:    *outPath,
 		FFProbeCmd: *ffprobeCmd,
 		Dispatcher: dispatcher,
-		YTworker:   dl,
+		Downloader: dl,
+		Logger:     logger,
 	}
 	http.Handle("/websocket", ws)
 	http.HandleFunc("/dl/stream/", ServeStream(*webRoot))

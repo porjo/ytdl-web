@@ -58,9 +58,9 @@ type wsHandler struct {
 	RemoteAddr string
 	FFProbeCmd string
 	Dispatcher *jobs.Dispatcher
-	YTworker   *ytworker.Download
+	Downloader *ytworker.Download
 
-	logger *slog.Logger
+	Logger *slog.Logger
 }
 
 func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -74,8 +74,8 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ws.RemoteAddr = gconn.RemoteAddr().String()
-	ws.logger = slog.With("ws", ws.RemoteAddr)
-	ws.logger.Info("client connected")
+	logger := ws.Logger.With("ws", ws.RemoteAddr)
+	logger.Info("client connected")
 
 	// wrap Gorilla conn with our conn so we can extend functionality
 	conn := Conn{sync.Mutex{}, gconn}
@@ -92,13 +92,13 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for {
 			select {
 			case <-ctx.Done():
-				ws.logger.Info("ping, context done")
+				logger.Info("ping, context done")
 				return
 			case <-ticker.C:
 				//slog.Debug("ping")
 				// WriteControl can be called concurrently
 				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WSWriteWait)); err != nil {
-					ws.logger.Error("ping client error", "error", err)
+					logger.Error("ping client error", "error", err)
 					cancel()
 					return
 				}
@@ -109,7 +109,14 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	errCh := make(chan error)
 	defer close(errCh)
 	// wait for goroutines to return before closing channels (defers are last in first out)
-	defer wg.Wait()
+	defer func() {
+		logger.Debug("serveHTTP waitgroup wait")
+		wg.Wait()
+		logger.Debug("serveHTTP end")
+	}()
+
+	id, outCh := ws.Downloader.Subscribe()
+	defer ws.Downloader.Unsubscribe(id)
 
 	wg.Add(1)
 	go func() {
@@ -119,7 +126,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-ctx.Done():
 				return
-			case m, open := <-ws.YTworker.OutChan:
+			case m, open := <-outCh:
 				if !open {
 					return
 				}
@@ -132,7 +139,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
 					recentURLs, err := GetRecentURLs(gruCtx, ws.WebRoot, ws.OutPath, ws.FFProbeCmd)
 					if err != nil {
-						ws.logger.Error("GetRecentURLS error", "error", err)
+						logger.Error("GetRecentURLS error", "error", err)
 						return
 					}
 					m := iws.Msg{Key: "recent", Value: recentURLs}
@@ -152,7 +159,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
 	recentURLs, err := GetRecentURLs(gruCtx, ws.WebRoot, ws.OutPath, ws.FFProbeCmd)
 	if err != nil {
-		ws.logger.Error("GetRecentURLS error", "error", err)
+		logger.Error("GetRecentURLS error", "error", err)
 		return
 	}
 	m := iws.Msg{Key: "recent", Value: recentURLs}
@@ -161,28 +168,28 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for {
 		msgType, raw, err := conn.ReadMessage()
 		if err != nil {
-			ws.logger.Error("ReadMessage error", "error", err)
+			logger.Error("ReadMessage error", "error", err)
 			return
 		}
 
-		ws.logger.Debug("read message", "msg", string(raw))
+		logger.Debug("read message", "msg", string(raw))
 
 		switch msgType {
 		case websocket.TextMessage:
 			var req Request
 			err = json.Unmarshal(raw, &req)
 			if err != nil {
-				ws.logger.Error("json unmarshal error", "error", err)
+				logger.Error("json unmarshal error", "error", err)
 				return
 			}
 
 			err := ws.msgHandler(req)
 			if err != nil {
-				ws.logger.Error("error", "error", err)
+				logger.Error("error", "error", err)
 				errCh <- err
 			}
 		default:
-			ws.logger.Info("unknown message type - close websocket\n")
+			logger.Error("unknown message type - close websocket\n")
 			conn.Close()
 			return
 		}
@@ -219,21 +226,6 @@ func (ws *wsHandler) msgHandler(req Request) error {
 
 		job := &jobs.Job{Payload: req.URL}
 		ws.Dispatcher.Enqueue(job)
-
-		/*
-			select {
-			case <-restartCh:
-				ctx2, cancel2 := context.WithCancel(ctx)
-				defer cancel2()
-				cancel1()
-				var restartCh2 chan bool
-				err = ws.ytDownload(ctx2, outCh, restartCh2, url)
-				if err != nil {
-					return err
-				}
-			default:
-			}
-		*/
 	}
 
 	return nil

@@ -16,10 +16,12 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/porjo/ytdl-web/internal/command"
 	"github.com/porjo/ytdl-web/internal/jobs"
+	"github.com/porjo/ytdl-web/internal/util"
 	"github.com/porjo/ytdl-web/internal/websocket"
 )
 
@@ -92,7 +94,11 @@ type Misc struct {
 }
 
 type Download struct {
-	OutChan chan websocket.Msg
+	sync.RWMutex
+
+	outCh chan websocket.Msg
+
+	subscribers map[int64]chan websocket.Msg
 
 	maxProcessTime time.Duration
 
@@ -120,16 +126,58 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 		ytCmd:            ytCmd,
 		ctx:              ctx,
 	}
-	dl.OutChan = make(chan websocket.Msg)
+	dl.subscribers = make(map[int64]chan websocket.Msg, 0)
+	dl.outCh = make(chan websocket.Msg, 10)
 
 	go func() {
-		<-ctx.Done()
-		slog.Info("closing outchan")
-		time.Sleep(time.Second)
-		close(dl.OutChan)
+		for {
+			select {
+			case <-ctx.Done():
+				slog.Info("closing subscribers")
+				time.Sleep(time.Second)
+				dl.RLock()
+				for _, s := range dl.subscribers {
+					close(s)
+				}
+				dl.RUnlock()
+				return
+			case m := <-dl.outCh:
+				dl.RLock()
+				for _, sub := range dl.subscribers {
+					util.NonblockingChSend(sub, m)
+				}
+				dl.RUnlock()
+			}
+		}
+	}()
+
+	go func() {
 	}()
 
 	return dl
+}
+
+func (yt *Download) Subscribe() (int64, chan websocket.Msg) {
+	id := time.Now().UnixMicro()
+	slog.Debug("download subscribe", "id", id)
+
+	outCh := make(chan websocket.Msg)
+
+	yt.Lock()
+	yt.subscribers[id] = outCh
+	yt.Unlock()
+
+	return id, outCh
+
+}
+func (yt *Download) Unsubscribe(id int64) {
+	slog.Debug("download unsubscribe", "id", id)
+	yt.Lock()
+	if s, ok := yt.subscribers[id]; ok {
+		close(s)
+		delete(yt.subscribers, id)
+	}
+	yt.Unlock()
 }
 
 func (yt *Download) Work(j *jobs.Job) {
@@ -145,11 +193,11 @@ func (yt *Download) Work(j *jobs.Job) {
 		return
 	}
 
-	yt.download(ctx, id, yt.OutChan, nil, url)
+	yt.download(ctx, id, yt.outCh, url)
 
 }
 
-func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websocket.Msg, restartCh chan bool, url *url.URL) error {
+func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websocket.Msg, url *url.URL) error {
 
 	forceOpus := true
 	for _, h := range noReencodeSites {
@@ -158,9 +206,6 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 			break
 		}
 	}
-
-	errCh := make(chan error)
-	defer close(errCh)
 
 	// filename is md5 sum of URL
 	urlSum := md5.Sum([]byte(url.String()))
@@ -270,6 +315,9 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 	m := websocket.Msg{Key: KeyInfo, Value: info}
 	outCh <- m
 
+	errCh := make(chan error)
+	defer close(errCh)
+
 	// output size of opus file as it gets written
 	if forceOpus {
 		go getOpusFileSize(ctx, id, info, outCh, errCh, diskFileNameTmp+".opus", yt.outPath)
@@ -296,28 +344,9 @@ loop:
 			if !open {
 				break loop
 			}
-			//fmt.Println(line)
 
 			p := getYTProgress(line)
 			if p != nil {
-				/*
-					if startDownload.IsZero() {
-						startDownload = time.Now()
-					}
-						if restartCh != nil {
-							if time.Since(startDownload) > time.Second*5 && p.Pct < 10 {
-								close(restartCh)
-								misc := Misc{
-									Id:  id,
-									Msg: "Restarting download...\n",
-								}
-								m := websocket.Msg{Key: "unknown", Value: misc}
-								outCh <- m
-								return nil
-							}
-						}
-				*/
-
 				if time.Since(lastOut) > 500*time.Millisecond {
 					m := websocket.Msg{
 						Key: KeyInfo,

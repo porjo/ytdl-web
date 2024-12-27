@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"sync"
 	"syscall"
+
+	"github.com/porjo/ytdl-web/internal/util"
 )
 
 var (
@@ -50,7 +52,7 @@ func RunCommandCh(ctx context.Context, command string, flags ...string) (chan st
 		slog.Debug("command start", "command", command)
 		err := cmd.Start()
 		if err != nil {
-			nonblockingChSend(errCh, err)
+			util.NonblockingChSend(errCh, err)
 		}
 
 		wg := sync.WaitGroup{}
@@ -61,11 +63,11 @@ func RunCommandCh(ctx context.Context, command string, flags ...string) (chan st
 				line, err := stdoutBuf.ReadString('\n')
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
-						nonblockingChSend(errCh, err)
+						util.NonblockingChSend(errCh, err)
 					}
 					return
 				}
-				nonblockingChSend(outCh, line)
+				util.NonblockingChSend(outCh, line)
 			}
 		}()
 
@@ -76,11 +78,11 @@ func RunCommandCh(ctx context.Context, command string, flags ...string) (chan st
 				line, err := stderrBuf.ReadString('\n')
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
-						nonblockingChSend(errCh, err)
+						util.NonblockingChSend(errCh, err)
 					}
 					break
 				}
-				nonblockingChSend(outCh, line)
+				util.NonblockingChSend(outCh, line)
 			}
 		}()
 
@@ -90,7 +92,7 @@ func RunCommandCh(ctx context.Context, command string, flags ...string) (chan st
 		slog.Debug("command wait", "command", command)
 		err = cmd.Wait()
 		if err != nil {
-			nonblockingChSend(errCh, err)
+			util.NonblockingChSend(errCh, err)
 		}
 		slog.Debug("command wait, done", "command", command)
 		// kill any orphaned children upon completion, ignore kill error
@@ -98,12 +100,4 @@ func RunCommandCh(ctx context.Context, command string, flags ...string) (chan st
 	}()
 
 	return outCh, errCh, nil
-}
-
-func nonblockingChSend[T any](ch chan T, msg T) {
-	select {
-	case ch <- msg:
-	default:
-		slog.Warn("channel was blocked, message discarded", "msg", msg)
-	}
 }
