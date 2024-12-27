@@ -38,10 +38,11 @@ $(function(){
 			$("#spinner").show();
 			$("#progress-bar > span").css("width", "0%")
 				.text("0%");
-			let url = $("#url").val();
-			let val = {URL: url};
+			let $url = $("#url");
+			let val = {URL: $url.val()};
 			ws.send(JSON.stringify(val));
 			$("#status").prepend("Requesting URL " + url + "\n");
+			$url.val('');
 			//$(this).prop('disabled', true);
 		} else {
 			$("#status").prepend("socket not ready\n")
@@ -111,11 +112,6 @@ $(function(){
 
 		return $job
 	}
-
-	/*
-	ws.onopen = function() {
-	};
-	*/
 
 	ws.onmessage = function (e)	{
 		let msg = JSON.parse(e.data);
@@ -279,6 +275,10 @@ $(function(){
 		// Add space for player at bottom of page
 		$("body").css("padding-bottom", $(".shk-player").css("height"));
 	}
+
+	ws.onerror = function(e)	{
+		console.log("Connection error", e)
+	};
 
 	ws.onclose = function()	{
 		$("#status").prepend("Connection closed\n");

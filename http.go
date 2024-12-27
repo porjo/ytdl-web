@@ -95,6 +95,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				ws.logger.Info("ping, context done")
 				return
 			case <-ticker.C:
+				//slog.Debug("ping")
 				// WriteControl can be called concurrently
 				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WSWriteWait)); err != nil {
 					ws.logger.Error("ping client error", "error", err)
@@ -166,7 +167,8 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		ws.logger.Debug("read message", "msg", string(raw))
 
-		if msgType == websocket.TextMessage {
+		switch msgType {
+		case websocket.TextMessage:
 			var req Request
 			err = json.Unmarshal(raw, &req)
 			if err != nil {
@@ -179,12 +181,11 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				ws.logger.Error("error", "error", err)
 				errCh <- err
 			}
-		} else {
+		default:
 			ws.logger.Info("unknown message type - close websocket\n")
 			conn.Close()
 			return
 		}
-		ws.logger.Info("end main loop")
 	}
 }
 

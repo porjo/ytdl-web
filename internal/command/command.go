@@ -32,8 +32,8 @@ func RunCommandCh(ctx context.Context, command string, flags ...string) (chan st
 	cmd := exec.CommandContext(ctx, command, flags...)
 	// set process group so that children can be killed
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	outCh := make(chan string)
-	errCh := make(chan error)
+	outCh := make(chan string, 10)
+	errCh := make(chan error, 10)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, nil, err

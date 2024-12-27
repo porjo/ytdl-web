@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -93,7 +94,9 @@ func main() {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {
-			slog.Error("http server listen", "error", err)
+			if !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("http server listen", "error", err)
+			}
 		}
 	}()
 
@@ -107,10 +110,13 @@ func main() {
 	cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		slog.Error("http server shutdown", "error", err)
+		if !errors.Is(err, context.Canceled) {
+			slog.Error("http server shutdown", "error", err)
+		}
 	}
 
-	// wait a bit for things to shut down
+	// wait a bit for things to settle
 	time.Sleep(time.Second)
 
+	slog.Info("Exiting")
 }
