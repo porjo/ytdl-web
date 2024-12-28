@@ -35,11 +35,13 @@ func main() {
 
 	// setup logging
 	programLevel := new(slog.LevelVar) // Info by default
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel}))
-	slog.SetDefault(logger)
+	so := &slog.HandlerOptions{Level: programLevel}
 	if *debug {
+		//so.AddSource = true
 		programLevel.Set(slog.LevelDebug)
 	}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, so))
+	slog.SetDefault(logger)
 
 	outPathFull := filepath.Join(*webRoot, *outPath)
 

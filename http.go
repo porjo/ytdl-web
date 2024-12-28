@@ -73,8 +73,12 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		slog.Error(err.Error())
 		return
 	}
+
+	id, outCh := ws.Downloader.Subscribe()
+	defer ws.Downloader.Unsubscribe(id)
+
 	ws.RemoteAddr = gconn.RemoteAddr().String()
-	logger := ws.Logger.With("ws", ws.RemoteAddr)
+	logger := ws.Logger.With("ws", id)
 	logger.Info("client connected")
 
 	// wrap Gorilla conn with our conn so we can extend functionality
@@ -106,21 +110,10 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	errCh := make(chan error)
-	defer close(errCh)
-	// wait for goroutines to return before closing channels (defers are last in first out)
-	defer func() {
-		logger.Debug("serveHTTP waitgroup wait")
-		wg.Wait()
-		logger.Debug("serveHTTP end")
-	}()
-
-	id, outCh := ws.Downloader.Subscribe()
-	defer ws.Downloader.Unsubscribe(id)
-
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer logger.Debug("serveHTTP outCh read loop, done")
 
 		for {
 			select {
@@ -132,7 +125,8 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				err := conn.writeMsg(m)
 				if err != nil {
-					errCh <- err
+					m := iws.Msg{Key: "error", Value: err.Error()}
+					conn.writeMsg(m)
 				}
 				if m.Key == ytworker.KeyCompleted {
 					// on completion, also send recent URLs
@@ -145,12 +139,6 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					m := iws.Msg{Key: "recent", Value: recentURLs}
 					conn.writeMsg(m)
 				}
-			case err := <-errCh:
-				if err != nil {
-					m := iws.Msg{Key: "error", Value: err.Error()}
-					conn.writeMsg(m)
-				}
-				return
 			}
 		}
 	}()
@@ -165,35 +153,47 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m := iws.Msg{Key: "recent", Value: recentURLs}
 	conn.writeMsg(m)
 
-	for {
-		msgType, raw, err := conn.ReadMessage()
-		if err != nil {
-			logger.Error("ReadMessage error", "error", err)
-			return
-		}
-
-		logger.Debug("read message", "msg", string(raw))
-
-		switch msgType {
-		case websocket.TextMessage:
-			var req Request
-			err = json.Unmarshal(raw, &req)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer logger.Debug("ending ws read goroutine")
+		defer conn.Close()
+		for {
+			msgType, raw, err := conn.ReadMessage()
 			if err != nil {
-				logger.Error("json unmarshal error", "error", err)
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					logger.Error("ReadMessage error", "error", err)
+				}
 				return
 			}
 
-			err := ws.msgHandler(req)
-			if err != nil {
-				logger.Error("error", "error", err)
-				errCh <- err
+			logger.Debug("read message", "msg", string(raw))
+
+			switch msgType {
+			case websocket.TextMessage:
+				var req Request
+				err = json.Unmarshal(raw, &req)
+				if err != nil {
+					logger.Error("json unmarshal error", "error", err)
+					return
+				}
+
+				err := ws.msgHandler(req)
+				if err != nil {
+					logger.Error("error", "error", err)
+					m := iws.Msg{Key: "error", Value: err.Error()}
+					conn.writeMsg(m)
+				}
+			default:
+				logger.Error("unknown message type - close websocket\n")
+				return
 			}
-		default:
-			logger.Error("unknown message type - close websocket\n")
-			conn.Close()
-			return
 		}
-	}
+	}()
+
+	logger.Debug("serveHTTP waitgroup wait")
+	wg.Wait()
+	logger.Debug("serveHTTP end")
 }
 
 func (c *Conn) writeMsg(val interface{}) error {
@@ -203,7 +203,7 @@ func (c *Conn) writeMsg(val interface{}) error {
 	if err != nil {
 		return err
 	}
-	slog.Debug("write message", "ws", c.RemoteAddr(), "msg", string(j))
+	//slog.Debug("write message", "ws", c.RemoteAddr(), "msg", string(j))
 	if err = c.WriteMessage(websocket.TextMessage, j); err != nil {
 		return err
 	}

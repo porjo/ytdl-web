@@ -130,6 +130,8 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 	dl.outCh = make(chan websocket.Msg, 10)
 
 	go func() {
+		defer close(dl.outCh)
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -143,15 +145,13 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 				return
 			case m := <-dl.outCh:
 				dl.RLock()
-				for _, sub := range dl.subscribers {
-					util.NonblockingChSend(sub, m)
+				for id, sub := range dl.subscribers {
+					ctx := context.WithValue(ctx, "clientID", id)
+					util.NonblockingChSendCtx(ctx, sub, m)
 				}
 				dl.RUnlock()
 			}
 		}
-	}()
-
-	go func() {
 	}()
 
 	return dl
@@ -324,7 +324,6 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 	}
 
 	// var startDownload time.Time
-	lastOut := time.Now()
 	var line string
 	var open bool
 loop:
@@ -347,20 +346,17 @@ loop:
 
 			p := getYTProgress(line)
 			if p != nil {
-				if time.Since(lastOut) > 500*time.Millisecond {
-					m := websocket.Msg{
-						Key: KeyInfo,
-						Value: Info{
-							Id:       id,
-							Artist:   info.Artist,
-							Title:    info.Title,
-							FileSize: info.FileSize,
-							Progress: *p,
-						},
-					}
-					outCh <- m
-					lastOut = time.Now()
+				m := websocket.Msg{
+					Key: KeyInfo,
+					Value: Info{
+						Id:       id,
+						Artist:   info.Artist,
+						Title:    info.Title,
+						FileSize: info.FileSize,
+						Progress: *p,
+					},
 				}
+				outCh <- m
 			} else {
 				misc := Misc{
 					Id:  id,
