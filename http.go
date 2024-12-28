@@ -16,7 +16,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/porjo/ytdl-web/internal/jobs"
-	iws "github.com/porjo/ytdl-web/internal/websocket"
+	"github.com/porjo/ytdl-web/internal/util"
 	"github.com/porjo/ytdl-web/internal/ytworker"
 )
 
@@ -125,7 +125,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				err := conn.writeMsg(m)
 				if err != nil {
-					m := iws.Msg{Key: "error", Value: err.Error()}
+					m := util.Msg{Key: "error", Value: err.Error()}
 					conn.writeMsg(m)
 				}
 				if m.Key == ytworker.KeyCompleted {
@@ -136,7 +136,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						logger.Error("GetRecentURLS error", "error", err)
 						return
 					}
-					m := iws.Msg{Key: "recent", Value: recentURLs}
+					m := util.Msg{Key: "recent", Value: recentURLs}
 					conn.writeMsg(m)
 				}
 			}
@@ -150,7 +150,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		logger.Error("GetRecentURLS error", "error", err)
 		return
 	}
-	m := iws.Msg{Key: "recent", Value: recentURLs}
+	m := util.Msg{Key: "recent", Value: recentURLs}
 	conn.writeMsg(m)
 
 	wg.Add(1)
@@ -181,7 +181,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				err := ws.msgHandler(req)
 				if err != nil {
 					logger.Error("msgHandler error", "error", err)
-					m := iws.Msg{Key: "error", Value: err.Error()}
+					m := util.Msg{Key: "error", Value: err.Error()}
 					conn.writeMsg(m)
 				}
 			default:

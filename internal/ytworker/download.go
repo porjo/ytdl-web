@@ -22,7 +22,6 @@ import (
 	"github.com/porjo/ytdl-web/internal/command"
 	"github.com/porjo/ytdl-web/internal/jobs"
 	"github.com/porjo/ytdl-web/internal/util"
-	"github.com/porjo/ytdl-web/internal/websocket"
 )
 
 const (
@@ -96,9 +95,9 @@ type Misc struct {
 type Download struct {
 	sync.RWMutex
 
-	outCh chan websocket.Msg
+	outCh chan util.Msg
 
-	subscribers map[int64]chan websocket.Msg
+	subscribers map[int64]chan util.Msg
 
 	maxProcessTime time.Duration
 
@@ -126,8 +125,8 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 		ytCmd:            ytCmd,
 		ctx:              ctx,
 	}
-	dl.subscribers = make(map[int64]chan websocket.Msg, 0)
-	dl.outCh = make(chan websocket.Msg, 10)
+	dl.subscribers = make(map[int64]chan util.Msg, 0)
+	dl.outCh = make(chan util.Msg, 10)
 
 	go func() {
 		defer close(dl.outCh)
@@ -136,7 +135,6 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 			select {
 			case <-ctx.Done():
 				slog.Info("closing subscribers")
-				time.Sleep(time.Second)
 				dl.RLock()
 				for _, s := range dl.subscribers {
 					close(s)
@@ -157,19 +155,22 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 	return dl
 }
 
-func (yt *Download) Subscribe() (int64, chan websocket.Msg) {
+// Subscribe allocates a channel for the caller to receive output from the command.
+// Resources used by the channel are released by [Unsubscribe].
+func (yt *Download) Subscribe() (int64, chan util.Msg) {
 	id := time.Now().UnixMicro()
 	slog.Debug("download subscribe", "id", id)
 
-	outCh := make(chan websocket.Msg, 10)
+	outCh := make(chan util.Msg, 10)
 
 	yt.Lock()
 	yt.subscribers[id] = outCh
 	yt.Unlock()
 
 	return id, outCh
-
 }
+
+// Unsubscribe is used to release the output channel created by [Subscribe].
 func (yt *Download) Unsubscribe(id int64) {
 	slog.Debug("download unsubscribe", "id", id)
 	yt.Lock()
@@ -180,14 +181,11 @@ func (yt *Download) Unsubscribe(id int64) {
 	yt.Unlock()
 }
 
+// Work is called by [jobs.Dispatcher] for each job in the queue.
 func (yt *Download) Work(j *jobs.Job) {
 
 	id := time.Now().UnixMicro()
 
-	//ctx, cancel := context.WithTimeout(yt.ctx, yt.maxProcessTime)
-	//defer cancel()
-
-	// rely on parent context cancel
 	ctx, _ := context.WithTimeout(yt.ctx, yt.maxProcessTime)
 
 	url, err := url.Parse(j.Payload)
@@ -200,7 +198,7 @@ func (yt *Download) Work(j *jobs.Job) {
 
 }
 
-func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websocket.Msg, url *url.URL) error {
+func (yt *Download) download(ctx context.Context, id int64, outCh chan<- util.Msg, url *url.URL) error {
 
 	forceOpus := true
 	for _, h := range noReencodeSites {
@@ -315,7 +313,7 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 		return fmt.Errorf("filesize %d too large", info.FileSize)
 	}
 
-	m := websocket.Msg{Key: KeyInfo, Value: info}
+	m := util.Msg{Key: KeyInfo, Value: info}
 	outCh <- m
 
 	// output size of opus file as it gets written
@@ -349,7 +347,7 @@ loop:
 
 			p := getYTProgress(line)
 			if p != nil {
-				m := websocket.Msg{
+				m := util.Msg{
 					Key: KeyInfo,
 					Value: Info{
 						Id:       id,
@@ -365,7 +363,7 @@ loop:
 					Id:  id,
 					Msg: line,
 				}
-				m := websocket.Msg{Key: KeyUnknown, Value: misc}
+				m := util.Msg{Key: KeyUnknown, Value: misc}
 				outCh <- m
 			}
 		}
@@ -418,7 +416,7 @@ loop:
 		if err != nil {
 			return err
 		}
-		m := websocket.Msg{
+		m := util.Msg{
 			Key: KeyUnknown,
 			Value: Misc{
 				Id:  id,
@@ -436,11 +434,11 @@ loop:
 	info.DownloadURL = filepath.Join(yt.outPath, filepath.Base(finalFileName))
 	// don't send link for forceOpus as that's handled in getOpusFileSize goroutine
 	if !forceOpus {
-		m := websocket.Msg{Key: KeyLinkStream, Value: info}
+		m := util.Msg{Key: KeyLinkStream, Value: info}
 		outCh <- m
 	}
 
-	m = websocket.Msg{
+	m = util.Msg{
 		Key: KeyCompleted,
 		Value: Misc{
 			Id:  id,
@@ -479,7 +477,7 @@ func getYTProgress(v string) *Progress {
 	return p
 }
 
-func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- websocket.Msg, filename, webPath string) error {
+func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- util.Msg, filename, webPath string) error {
 	var startTime time.Time
 	streamURLSent := false
 
@@ -503,7 +501,7 @@ func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- webs
 			// wait until we have some data before sending stream URL
 			if !streamURLSent && opusFI.Size() > 10000 {
 				info.DownloadURL = filepath.Join(webPath, "stream", "t", filepath.Base(filename))
-				m := websocket.Msg{Key: KeyLinkStream, Value: info}
+				m := util.Msg{Key: KeyLinkStream, Value: info}
 				outCh <- m
 				streamURLSent = true
 			}
@@ -523,7 +521,7 @@ func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- webs
 						eta := time.Duration((float32(diff) / pct) * (100 - pct)).Round(time.Second)
 						etaStr = eta.String()
 					}
-					m := websocket.Msg{
+					m := util.Msg{
 						Key: KeyInfo,
 						Value: Info{
 							Id:       id,
@@ -540,7 +538,7 @@ func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- webs
 					outCh <- m
 				}
 			}
-			m := websocket.Msg{
+			m := util.Msg{
 				Key: KeyUnknown,
 				Value: Misc{
 					Id:  id,
