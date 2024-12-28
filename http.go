@@ -167,7 +167,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			logger.Debug("read message", "msg", string(raw))
+			logger.Debug("websocket read", "msg", string(raw))
 
 			switch msgType {
 			case websocket.TextMessage:
@@ -180,7 +180,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 				err := ws.msgHandler(req)
 				if err != nil {
-					logger.Error("error", "error", err)
+					logger.Error("msgHandler error", "error", err)
 					m := iws.Msg{Key: "error", Value: err.Error()}
 					conn.writeMsg(m)
 				}
@@ -203,7 +203,7 @@ func (c *Conn) writeMsg(val interface{}) error {
 	if err != nil {
 		return err
 	}
-	//slog.Debug("write message", "ws", c.RemoteAddr(), "msg", string(j))
+	slog.Debug("websocket write", "ws", c.RemoteAddr(), "msg", string(j))
 	if err = c.WriteMessage(websocket.TextMessage, j); err != nil {
 		return err
 	}

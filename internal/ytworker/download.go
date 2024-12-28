@@ -161,7 +161,7 @@ func (yt *Download) Subscribe() (int64, chan websocket.Msg) {
 	id := time.Now().UnixMicro()
 	slog.Debug("download subscribe", "id", id)
 
-	outCh := make(chan websocket.Msg)
+	outCh := make(chan websocket.Msg, 10)
 
 	yt.Lock()
 	yt.subscribers[id] = outCh
@@ -184,8 +184,11 @@ func (yt *Download) Work(j *jobs.Job) {
 
 	id := time.Now().UnixMicro()
 
-	ctx, cancel := context.WithTimeout(yt.ctx, yt.maxProcessTime)
-	defer cancel()
+	//ctx, cancel := context.WithTimeout(yt.ctx, yt.maxProcessTime)
+	//defer cancel()
+
+	// rely on parent context cancel
+	ctx, _ := context.WithTimeout(yt.ctx, yt.maxProcessTime)
 
 	url, err := url.Parse(j.Payload)
 	if err != nil {
@@ -315,12 +318,14 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- websock
 	m := websocket.Msg{Key: KeyInfo, Value: info}
 	outCh <- m
 
-	errCh := make(chan error)
-	defer close(errCh)
-
 	// output size of opus file as it gets written
 	if forceOpus {
-		go getOpusFileSize(ctx, id, info, outCh, errCh, diskFileNameTmp+".opus", yt.outPath)
+		go func() {
+			err := getOpusFileSize(ctx, id, info, outCh, diskFileNameTmp+".opus", yt.outPath)
+			if err != nil {
+				slog.Error("getOpusFileSize error", "error", err)
+			}
+		}()
 	}
 
 	// var startDownload time.Time
@@ -332,8 +337,6 @@ loop:
 		case <-ctx.Done():
 			slog.Info("download, context done")
 			return nil
-		case err := <-errCh:
-			return err
 		case err, open := <-cmdErrCh:
 			if !open {
 				break loop
@@ -476,7 +479,7 @@ func getYTProgress(v string) *Progress {
 	return p
 }
 
-func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- websocket.Msg, errCh chan error, filename, webPath string) {
+func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- websocket.Msg, filename, webPath string) error {
 	var startTime time.Time
 	streamURLSent := false
 
@@ -486,14 +489,13 @@ func getOpusFileSize(ctx context.Context, id int64, info Info, outCh chan<- webs
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case <-ticker.C:
 			opusFI, err := os.Stat(filename)
 			// abort on errors except for ErrNotExist
 			if err != nil {
 				if !errors.Is(err, fs.ErrNotExist) {
-					errCh <- fmt.Errorf("error getting stat on opus file '%s': %w", filename, err)
-					return
+					return fmt.Errorf("error getting stat on opus file '%s': %w", filename, err)
 				}
 				continue
 			}
