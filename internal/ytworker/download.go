@@ -41,8 +41,6 @@ var (
 	// capture progress output e.g '100 of 10000000 / 10000000 eta 30'
 	ytProgressRe = regexp.MustCompile(`([\d]+) of ([\dNA]+) / ([\d.NA]+) eta ([\d]+)`)
 
-	noReencodeSites = []string{"youtube.com", "twitter.com", "rumble.com"}
-
 	// filename sanitization
 	// swap specific special characters
 	filenameReplacer = strings.NewReplacer(
@@ -68,6 +66,7 @@ type YTInfo struct {
 	FileSize             int64
 	Extension            string        `json:"ext"`
 	SponsorBlockChapters []interface{} `json:"sponsorblock_chapters"`
+	AudioCodec           string        `json:"acodec"`
 }
 type Info struct {
 	Id     int64
@@ -200,14 +199,6 @@ func (yt *Download) Work(j *jobs.Job) {
 
 func (yt *Download) download(ctx context.Context, id int64, outCh chan<- util.Msg, url *url.URL) error {
 
-	forceOpus := true
-	for _, h := range noReencodeSites {
-		if strings.Contains(url.Host, h) {
-			forceOpus = false
-			break
-		}
-	}
-
 	// filename is md5 sum of URL
 	urlSum := md5.Sum([]byte(url.String()))
 	diskFileNameTmp := filepath.Join(yt.webRoot, yt.outPath, "t", "ytdl-"+fmt.Sprintf("%x", urlSum))
@@ -247,13 +238,14 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- util.Ms
 			"--sponsorblock-remove", yt.sponsorBlockCats,
 		}...)
 	}
-	if forceOpus {
-		args = append(args, []string{
-			"--audio-format", "opus",
-			"--audio-quality", "32K",
-			//	"--postprocessor-args", `ExtractAudio:-compression_level 0`,  // fastest, lowest quality compression
-		}...)
-	}
+	args = append(args, []string{
+		// re-encode mp3 to opus, leave opus as-is, otherwise remux to m4a (re-encode to aac)
+		"--audio-format", "mp3>opus/opus>opus/m4a",
+		// Use 32K bitrate.
+		// This only applies to mp3>opus conversion. Other input formats will retain original bitrate.
+		"--audio-quality", "32K",
+		//	"--postprocessor-args", `ExtractAudio:-compression_level 0`,  // fastest, lowest quality compression
+	}...)
 	args = append(args, url.String())
 
 	slog.Info("Running command", "command", append([]string{yt.ytCmd}, args...))
@@ -316,8 +308,14 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- util.Ms
 	m := util.Msg{Key: KeyInfo, Value: info}
 	outCh <- m
 
+	opusEncode := false
+
 	// output size of opus file as it gets written
-	if forceOpus {
+	if ytInfo.AudioCodec == "mp3" {
+		opusEncode = true
+	}
+
+	if opusEncode {
 		go func() {
 			err := getOpusFileSize(ctx, id, info, outCh, diskFileNameTmp+".opus", yt.outPath)
 			if err != nil {
@@ -411,7 +409,7 @@ loop:
 	}
 	finalFileName := finalFileNameNoExt + ext
 
-	if forceOpus {
+	if opusEncode {
 		fi, err := os.Stat(diskFileNameTmp2)
 		if err != nil {
 			return err
@@ -432,8 +430,8 @@ loop:
 	}
 
 	info.DownloadURL = filepath.Join(yt.outPath, filepath.Base(finalFileName))
-	// don't send link for forceOpus as that's handled in getOpusFileSize goroutine
-	if !forceOpus {
+	// don't send link for opusEncode as that's handled in getOpusFileSize goroutine
+	if !opusEncode {
 		m := util.Msg{Key: KeyLinkStream, Value: info}
 		outCh <- m
 	}
