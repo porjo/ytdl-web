@@ -227,10 +227,14 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- util.Ms
 
 		// proto:dash is needed for fast Youtube downloads
 		// sort by size, bitrate in ascending order
-		"-S", "proto:dash,+size,+br",
+		//"-S", "proto:dash,+size,+br",
 
 		// Faster youtube downloads: this combined with -S proto:dash ensures that we get dash https://github.com/yt-dlp/yt-dlp/issues/7417
-		"--extractor-args", "youtube:formats=duplicate",
+		//"--extractor-args", "youtube:formats=duplicate",
+
+		// Added 2025-01-18 after finding very poor quality audio from the dash settings above.
+		// It seems Youtube has moved from 48kb/s to 32kb/s in their LQ files and it sounds awful!
+		"-f", "bestaudio",
 	}
 
 	if yt.sponsorBlock {
@@ -240,7 +244,7 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- util.Ms
 	}
 	args = append(args, []string{
 		// re-encode mp3 to opus, leave opus as-is, otherwise remux to m4a (re-encode to aac)
-		"--audio-format", "mp3>opus/opus>opus/m4a",
+		"--audio-format", "mp3>opus/opus>opus/webm>opus/m4a",
 		// Use 32K bitrate.
 		// This only applies to mp3>opus conversion. Other input formats will retain original bitrate.
 		"--audio-quality", "32K",
