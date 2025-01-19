@@ -18,6 +18,7 @@ import (
 	"github.com/porjo/ytdl-web/internal/jobs"
 	"github.com/porjo/ytdl-web/internal/util"
 	"github.com/porjo/ytdl-web/internal/ytworker"
+	"github.com/tmaxmax/go-sse"
 )
 
 const (
@@ -35,24 +36,12 @@ const (
 	DefaultExpiry = 24 * time.Hour
 )
 
-var (
-	upgrader = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-	}
-)
-
 type Request struct {
 	URL        string
 	DeleteURLs []string `json:"delete_urls"`
 }
 
-type Conn struct {
-	sync.Mutex
-	*websocket.Conn
-}
-
-type wsHandler struct {
+type dlHandler struct {
 	WebRoot    string
 	OutPath    string
 	RemoteAddr string
@@ -61,54 +50,23 @@ type wsHandler struct {
 	Downloader *ytworker.Download
 
 	Logger *slog.Logger
+
+	SSE *sse.Server
 }
 
-func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (dl *dlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	gconn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		slog.Error(err.Error())
-		return
-	}
+	id, outCh := dl.Downloader.Subscribe()
+	defer dl.Downloader.Unsubscribe(id)
 
-	id, outCh := ws.Downloader.Subscribe()
-	defer ws.Downloader.Unsubscribe(id)
-
-	ws.RemoteAddr = gconn.RemoteAddr().String()
-	logger := ws.Logger.With("ws", id)
+	dl.RemoteAddr = r.RemoteAddr
+	logger := dl.Logger.With("dl", id)
 	logger.Info("client connected")
 
-	// wrap Gorilla conn with our conn so we can extend functionality
-	conn := Conn{sync.Mutex{}, gconn}
-
 	wg := sync.WaitGroup{}
-
-	wg.Add(1)
-	// setup ping/pong to keep connection open
-	go func() {
-		ticker := time.NewTicker(WSPingInterval)
-		defer ticker.Stop()
-		defer wg.Done()
-
-		for {
-			select {
-			case <-ctx.Done():
-				logger.Info("ping, context done")
-				return
-			case <-ticker.C:
-				//slog.Debug("ping")
-				// WriteControl can be called concurrently
-				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WSWriteWait)); err != nil {
-					logger.Error("ping client error", "error", err)
-					cancel()
-					return
-				}
-			}
-		}
-	}()
 
 	wg.Add(1)
 	go func() {
@@ -123,35 +81,38 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if !open {
 					return
 				}
-				err := conn.writeMsg(m)
-				if err != nil {
-					m := util.Msg{Key: "error", Value: err.Error()}
-					conn.writeMsg(m)
-				}
+				sseM := &sse.Message{}
+				j, _ := m.JSON()
+				sseM.AppendData(string(j))
+
 				if m.Key == ytworker.KeyCompleted {
 					// on completion, also send recent URLs
 					gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
-					recentURLs, err := GetRecentURLs(gruCtx, ws.WebRoot, ws.OutPath, ws.FFProbeCmd)
+					recentURLs, err := GetRecentURLs(gruCtx, dl.WebRoot, dl.OutPath, dl.FFProbeCmd)
 					if err != nil {
 						logger.Error("GetRecentURLS error", "error", err)
 						return
 					}
 					m := util.Msg{Key: "recent", Value: recentURLs}
-					conn.writeMsg(m)
+					j, _ = m.JSON()
+					sseM.AppendData(string(j))
 				}
+				dl.SSE.Publish(sseM)
 			}
 		}
 	}()
 
+	sseM := &sse.Message{}
 	// Send recently retrieved URLs
 	gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
-	recentURLs, err := GetRecentURLs(gruCtx, ws.WebRoot, ws.OutPath, ws.FFProbeCmd)
+	recentURLs, err := GetRecentURLs(gruCtx, dl.WebRoot, dl.OutPath, dl.FFProbeCmd)
 	if err != nil {
 		logger.Error("GetRecentURLS error", "error", err)
 		return
 	}
 	m := util.Msg{Key: "recent", Value: recentURLs}
-	conn.writeMsg(m)
+	j, _ = m.JSON()
+	dl.SSE.Publish(sseM)
 
 	wg.Add(1)
 	go func() {
@@ -178,7 +139,7 @@ func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 
-				err := ws.msgHandler(req)
+				err := dl.msgHandler(req)
 				if err != nil {
 					logger.Error("msgHandler error", "error", err)
 					m := util.Msg{Key: "error", Value: err.Error()}
@@ -211,7 +172,7 @@ func (c *Conn) writeMsg(val interface{}) error {
 	return nil
 }
 
-func (ws *wsHandler) msgHandler(req Request) error {
+func (ws *dlHandler) msgHandler(req Request) error {
 
 	if req.URL == "" && len(req.DeleteURLs) == 0 {
 		return fmt.Errorf("unknown parameters")

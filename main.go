@@ -15,6 +15,7 @@ import (
 
 	"github.com/porjo/ytdl-web/internal/jobs"
 	"github.com/porjo/ytdl-web/internal/ytworker"
+	"github.com/tmaxmax/go-sse"
 )
 
 const MaxProcessTime = time.Second * 300
@@ -72,17 +73,31 @@ func main() {
 		dispatcher.Start(ctx)
 	}()
 
-	ws := &wsHandler{
+	s := &sse.Server{}
+
+	dlh := &dlHandler{
 		WebRoot:    *webRoot,
 		OutPath:    *outPath,
 		FFProbeCmd: *ffprobeCmd,
 		Dispatcher: dispatcher,
 		Downloader: dl,
 		Logger:     logger,
+		SSE:        s,
 	}
-	http.Handle("/websocket", ws)
 	http.HandleFunc("/dl/stream/", ServeStream(*webRoot))
 	http.Handle("/", http.FileServer(http.Dir(*webRoot)))
+
+	go func() {
+		m := &sse.Message{}
+		m.AppendData("Hello world")
+
+		for range time.Tick(time.Second) {
+			_ = s.Publish(m)
+		}
+	}()
+
+	http.Handle("/sse", s)
+	http.Handle("/dl", dlh)
 
 	slog.Info("starting cleanup routine...")
 	go fileCleanup(filepath.Join(*webRoot, *outPath), *expiry)

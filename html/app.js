@@ -17,6 +17,14 @@ var seekTimer = null;
 var trackId = null;
 
 $(function(){
+
+	var sseHost = window.location.protocol + "//" + window.location.host;
+
+	const evtSource = new EventSource(sseHost + "/sse");
+	evtSource.onmessage = (event) => {
+		console.log("sse event", event);
+	}
+
 	var ws = new WebSocket(ws_uri);
 
 	const url = new URL(window.location);

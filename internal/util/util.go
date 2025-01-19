@@ -2,6 +2,7 @@ package util
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"runtime"
 )
@@ -29,4 +30,12 @@ func NonblockingChSendCtx[T any](ctx context.Context, ch chan T, msg T) {
 type Msg struct {
 	Key   string
 	Value interface{}
+}
+
+func (m Msg) JSON() ([]byte, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
