@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/porjo/ytdl-web/internal/jobs"
+	"github.com/porjo/ytdl-web/internal/util"
 	"github.com/porjo/ytdl-web/internal/ytworker"
 	"github.com/tmaxmax/go-sse"
 )
@@ -73,7 +74,51 @@ func main() {
 		dispatcher.Start(ctx)
 	}()
 
-	s := &sse.Server{}
+	s := &sse.Server{
+		OnSession: func(s *sse.Session) (sse.Subscription, bool) {
+
+			logger.Debug("session started", "remote_addr", s.Req.RemoteAddr)
+
+			return sse.Subscription{
+				Client:      s,
+				LastEventID: s.LastEventID,
+				Topics:      []string{sse.DefaultTopic},
+			}, true
+		},
+	}
+
+	go func() {
+		defer logger.Debug("downloader outCh read loop, done")
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case m, open := <-dl.OutCh:
+				if !open {
+					return
+				}
+				sseM := &sse.Message{}
+				j, _ := m.JSON()
+				sseM.AppendData(string(j))
+
+				if m.Key == ytworker.KeyCompleted {
+					// on completion, also send recent URLs
+					gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
+					recentURLs, err := GetRecentURLs(gruCtx, *webRoot, *outPath, *ffprobeCmd)
+					if err != nil {
+						logger.Error("GetRecentURLS error", "error", err)
+						return
+					}
+					m := util.Msg{Key: "recent", Value: recentURLs}
+					j, _ = m.JSON()
+					logger.Debug("recent", "json", string(j))
+					sseM.AppendData(string(j))
+				}
+				s.Publish(sseM)
+			}
+		}
+	}()
 
 	dlh := &dlHandler{
 		WebRoot:    *webRoot,
@@ -86,15 +131,6 @@ func main() {
 	}
 	http.HandleFunc("/dl/stream/", ServeStream(*webRoot))
 	http.Handle("/", http.FileServer(http.Dir(*webRoot)))
-
-	go func() {
-		m := &sse.Message{}
-		m.AppendData("Hello world")
-
-		for range time.Tick(time.Second) {
-			_ = s.Publish(m)
-		}
-	}()
 
 	http.Handle("/sse", s)
 	http.Handle("/dl", dlh)

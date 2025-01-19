@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,12 +10,9 @@ import (
 	"net/http"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/porjo/ytdl-web/internal/jobs"
-	"github.com/porjo/ytdl-web/internal/util"
 	"github.com/porjo/ytdl-web/internal/ytworker"
 	"github.com/tmaxmax/go-sse"
 )
@@ -44,7 +40,6 @@ type Request struct {
 type dlHandler struct {
 	WebRoot    string
 	OutPath    string
-	RemoteAddr string
 	FFProbeCmd string
 	Dispatcher *jobs.Dispatcher
 	Downloader *ytworker.Download
@@ -56,120 +51,29 @@ type dlHandler struct {
 
 func (dl *dlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-
-	id, outCh := dl.Downloader.Subscribe()
-	defer dl.Downloader.Unsubscribe(id)
-
-	dl.RemoteAddr = r.RemoteAddr
-	logger := dl.Logger.With("dl", id)
+	logger := dl.Logger.With("dl", r.RemoteAddr)
 	logger.Info("client connected")
 
-	wg := sync.WaitGroup{}
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer logger.Debug("serveHTTP outCh read loop, done")
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case m, open := <-outCh:
-				if !open {
-					return
-				}
-				sseM := &sse.Message{}
-				j, _ := m.JSON()
-				sseM.AppendData(string(j))
-
-				if m.Key == ytworker.KeyCompleted {
-					// on completion, also send recent URLs
-					gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
-					recentURLs, err := GetRecentURLs(gruCtx, dl.WebRoot, dl.OutPath, dl.FFProbeCmd)
-					if err != nil {
-						logger.Error("GetRecentURLS error", "error", err)
-						return
-					}
-					m := util.Msg{Key: "recent", Value: recentURLs}
-					j, _ = m.JSON()
-					sseM.AppendData(string(j))
-				}
-				dl.SSE.Publish(sseM)
-			}
-		}
-	}()
-
-	sseM := &sse.Message{}
-	// Send recently retrieved URLs
-	gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
-	recentURLs, err := GetRecentURLs(gruCtx, dl.WebRoot, dl.OutPath, dl.FFProbeCmd)
+	decoder := json.NewDecoder(r.Body)
+	var req Request
+	err := decoder.Decode(&req)
 	if err != nil {
-		logger.Error("GetRecentURLS error", "error", err)
+		err = fmt.Errorf("JSON decode error: %w", err)
+		logger.Error("", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
 		return
 	}
-	m := util.Msg{Key: "recent", Value: recentURLs}
-	j, _ = m.JSON()
-	dl.SSE.Publish(sseM)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer logger.Debug("ending ws read goroutine")
-		defer conn.Close()
-		for {
-			msgType, raw, err := conn.ReadMessage()
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					logger.Error("ReadMessage error", "error", err)
-				}
-				return
-			}
-
-			logger.Debug("websocket read", "msg", string(raw))
-
-			switch msgType {
-			case websocket.TextMessage:
-				var req Request
-				err = json.Unmarshal(raw, &req)
-				if err != nil {
-					logger.Error("json unmarshal error", "error", err)
-					return
-				}
-
-				err := dl.msgHandler(req)
-				if err != nil {
-					logger.Error("msgHandler error", "error", err)
-					m := util.Msg{Key: "error", Value: err.Error()}
-					conn.writeMsg(m)
-				}
-			default:
-				logger.Error("unknown message type - close websocket\n")
-				return
-			}
-		}
-	}()
-
-	logger.Debug("serveHTTP waitgroup wait")
-	wg.Wait()
-	logger.Debug("serveHTTP end")
-}
-
-func (c *Conn) writeMsg(val interface{}) error {
-	c.Lock()
-	defer c.Unlock()
-	j, err := json.Marshal(val)
+	err = dl.msgHandler(req)
 	if err != nil {
-		return err
-	}
-	slog.Debug("websocket write", "ws", c.RemoteAddr(), "msg", string(j))
-	if err = c.WriteMessage(websocket.TextMessage, j); err != nil {
-		return err
+		logger.Error("msgHandler error", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(err.Error()))
+		return
 	}
 
-	return nil
+	logger.Debug("serveHTTP end")
 }
 
 func (ws *dlHandler) msgHandler(req Request) error {

@@ -1,31 +1,43 @@
 
 var player = null;
-
-var loc = window.location, ws_uri;
-if (loc.protocol === "https:") {
-	ws_uri = "wss:";
-} else {
-	ws_uri = "ws:";
-}
-ws_uri += "//" + loc.host;
-var path = loc.pathname.replace(/\/$/, '');
-ws_uri += path + "/websocket";
-
 var progLast = null;
 var seekTimer = null;
 
 var trackId = null;
+
+async function postData (data) {
+	try {
+		const response = await fetch(window.location.protocol + "//" + window.location.host + "/dl", {
+			method: "POST",
+			body: JSON.stringify(data)
+		});
+		if (!response.ok) {
+			throw new Error(`Response status: ${response.status}`);
+		}
+	} catch (error) {
+		console.error(error.message);
+	}
+}
 
 $(function(){
 
 	var sseHost = window.location.protocol + "//" + window.location.host;
 
 	const evtSource = new EventSource(sseHost + "/sse");
-	evtSource.onmessage = (event) => {
-		console.log("sse event", event);
-	}
 
-	var ws = new WebSocket(ws_uri);
+	window.onbeforeunload = () => {
+		console.log("closing sse");
+		evtSource.close();
+	};
+
+	evtSource.onerror = (err) => {
+		console.error("EventSource failed:", err);
+	};
+
+	// this doesn't fire until server sends first message
+	evtSource.onopen = (e) => {
+		console.log("The connection has been established.");
+	};
 
 	const url = new URL(window.location);
 	const searchParams = new URLSearchParams(url.search);
@@ -41,20 +53,15 @@ $(function(){
 		window.history.pushState('newUrl', '', url);
 	});
 
-	$("#go-button").click(function() {
-		if (ws.readyState === 1) {
-			$("#spinner").show();
-			$("#progress-bar > span").css("width", "0%")
-				.text("0%");
-			let $url = $("#url");
-			let val = {URL: $url.val()};
-			ws.send(JSON.stringify(val));
-			$("#status").prepend("Requesting URL " + url + "\n");
-			$url.val('');
-			//$(this).prop('disabled', true);
-		} else {
-			$("#status").prepend("socket not ready\n")
-		}
+	$("#go-button").click(function () {
+		$("#spinner").show();
+		$("#progress-bar > span").css("width", "0%")
+			.text("0%");
+		let $url = $("#url");
+		postData({ url: $url.val() });
+		$("#status").prepend("Requesting URL " + url + "\n");
+		$url.val('');
+		//$(this).prop('disabled', true);
 	});
 
 	$("#searchbox span").click(function() {
@@ -70,7 +77,7 @@ $(function(){
 
 		if( urls.length > 0 ) {
 			let param = {delete_urls: urls};
-			ws.send(JSON.stringify(param));
+			postData(param);
 		}
 	});
 
@@ -121,8 +128,9 @@ $(function(){
 		return $job
 	}
 
-	ws.onmessage = function (e)	{
+	evtSource.onmessage = function (e)	{
 		let msg = JSON.parse(e.data);
+		//console.log("sse msg", msg);
 		if( 'Key' in msg ) {
 			switch (msg.Key) {
 				case 'error':
@@ -282,24 +290,6 @@ $(function(){
 
 		// Add space for player at bottom of page
 		$("body").css("padding-bottom", $(".shk-player").css("height"));
-	}
-
-	ws.onerror = function(e)	{
-		console.log("Connection error", e)
-	};
-
-	ws.onclose = function()	{
-		$("#status").prepend("Connection closed\n");
-		console.log("Connection closed");
-		$("#ws-status-light").toggleClass("on off");
-		$("#controls").hide();
-	};
-
-	ws.onopen = function(e) {
-		$("#status").prepend("Connection opened\n");
-		console.log("Connection opened");
-		$("#ws-status-light").toggleClass("off on");
-		$("#controls").show();
 	}
 
 	$('#output').on('click','.status', function() {
