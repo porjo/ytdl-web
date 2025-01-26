@@ -1,23 +1,65 @@
 
+var sseHost = window.location.protocol + "//" + window.location.host;
+
 var player = null;
-
-var loc = window.location, ws_uri;
-if (loc.protocol === "https:") {
-	ws_uri = "wss:";
-} else {
-	ws_uri = "ws:";
-}
-ws_uri += "//" + loc.host;
-var path = loc.pathname.replace(/\/$/, '');
-ws_uri += path + "/websocket";
-
 var progLast = null;
 var seekTimer = null;
 
 var trackId = null;
 
+var lastPing = new Date();
+
+async function postData (data) {
+	try {
+		const response = await fetch(sseHost + "/dl", {
+			method: "POST",
+			body: JSON.stringify(data)
+		});
+		if (!response.ok) {
+			throw new Error(`Response status: ${response.status}`);
+		}
+	} catch (error) {
+		console.error(error.message);
+	}
+}
+
 $(function(){
-	var ws = new WebSocket(ws_uri);
+
+	const evtSource = new EventSource(sseHost + "/sse");
+
+	// fetch /recent will trigger event to send recent URLs
+	fetch(sseHost + "/recent");
+
+	// it's necessary to close the event source on page unload (e.g. page refresh)
+	// otherwise on next page load the sse conn clashes and we get an error
+	window.onbeforeunload = () => {
+		console.log("closing sse");
+		evtSource.close();
+	};
+
+	evtSource.onerror = (err) => {
+		console.error("EventSource failed:", err);
+	};
+
+	evtSource.addEventListener("ping", (event) => {
+		//console.log("ping");
+		lastPing = new Date();
+	});
+
+	setInterval(() => {
+		let diff = new Date() - lastPing;
+		if(diff > 30000) {
+			console.log("ping timeout, reloading page...")
+			location.reload();
+		}
+	},5000)
+
+	/*
+	// this doesn't fire until server sends first message
+	evtSource.onopen = (e) => {
+		console.log("The connection has been established.");
+	};
+	*/
 
 	const url = new URL(window.location);
 	const searchParams = new URLSearchParams(url.search);
@@ -33,20 +75,15 @@ $(function(){
 		window.history.pushState('newUrl', '', url);
 	});
 
-	$("#go-button").click(function() {
-		if (ws.readyState === 1) {
-			$("#spinner").show();
-			$("#progress-bar > span").css("width", "0%")
-				.text("0%");
-			let $url = $("#url");
-			let val = {URL: $url.val()};
-			ws.send(JSON.stringify(val));
-			$("#status").prepend("Requesting URL " + url + "\n");
-			$url.val('');
-			//$(this).prop('disabled', true);
-		} else {
-			$("#status").prepend("socket not ready\n")
-		}
+	$("#go-button").click(function () {
+		$("#spinner").show();
+		$("#progress-bar > span").css("width", "0%")
+			.text("0%");
+		let $url = $("#url");
+		postData({ url: $url.val() });
+		$("#status").prepend("Requesting URL " + url + "\n");
+		$url.val('');
+		//$(this).prop('disabled', true);
 	});
 
 	$("#searchbox span").click(function() {
@@ -62,7 +99,7 @@ $(function(){
 
 		if( urls.length > 0 ) {
 			let param = {delete_urls: urls};
-			ws.send(JSON.stringify(param));
+			postData(param);
 		}
 	});
 
@@ -113,8 +150,14 @@ $(function(){
 		return $job
 	}
 
-	ws.onmessage = function (e)	{
-		let msg = JSON.parse(e.data);
+	evtSource.onmessage = function (e)	{
+		let messages = e.data.split(/\r?\n/);
+		messages.forEach(msgHandler)
+	}
+
+	function msgHandler(json) {
+		//console.log("msgHandler", json);
+		let msg = JSON.parse(json);
 		if( 'Key' in msg ) {
 			switch (msg.Key) {
 				case 'error':
@@ -274,24 +317,6 @@ $(function(){
 
 		// Add space for player at bottom of page
 		$("body").css("padding-bottom", $(".shk-player").css("height"));
-	}
-
-	ws.onerror = function(e)	{
-		console.log("Connection error", e)
-	};
-
-	ws.onclose = function()	{
-		$("#status").prepend("Connection closed\n");
-		console.log("Connection closed");
-		$("#ws-status-light").toggleClass("on off");
-		$("#controls").hide();
-	};
-
-	ws.onopen = function(e) {
-		$("#status").prepend("Connection opened\n");
-		console.log("Connection opened");
-		$("#ws-status-light").toggleClass("off on");
-		$("#controls").show();
 	}
 
 	$('#output').on('click','.status', function() {

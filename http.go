@@ -11,13 +11,11 @@ import (
 	"net/http"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/porjo/ytdl-web/internal/jobs"
-	"github.com/porjo/ytdl-web/internal/util"
 	"github.com/porjo/ytdl-web/internal/ytworker"
+	sse "github.com/tmaxmax/go-sse"
 )
 
 const (
@@ -28,18 +26,8 @@ const (
 	// http response deadline (slow reading clients)
 	HTTPWriteTimeout = 1800 * time.Second
 
-	WSPingInterval = 10 * time.Second
-	WSWriteWait    = 2 * time.Second
-
 	// default content expiry in seconds
 	DefaultExpiry = 24 * time.Hour
-)
-
-var (
-	upgrader = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-	}
 )
 
 type Request struct {
@@ -47,185 +35,65 @@ type Request struct {
 	DeleteURLs []string `json:"delete_urls"`
 }
 
-type Conn struct {
-	sync.Mutex
-	*websocket.Conn
-}
-
-type wsHandler struct {
+type dlHandler struct {
 	WebRoot    string
 	OutPath    string
-	RemoteAddr string
 	FFProbeCmd string
 	Dispatcher *jobs.Dispatcher
 	Downloader *ytworker.Download
 
 	Logger *slog.Logger
+
+	SSE *sse.Server
 }
 
-func (ws *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (dl *dlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-
-	gconn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		slog.Error(err.Error())
-		return
-	}
-
-	id, outCh := ws.Downloader.Subscribe()
-	defer ws.Downloader.Unsubscribe(id)
-
-	ws.RemoteAddr = gconn.RemoteAddr().String()
-	logger := ws.Logger.With("ws", id)
+	logger := dl.Logger.With("dl", r.RemoteAddr)
 	logger.Info("client connected")
 
-	// wrap Gorilla conn with our conn so we can extend functionality
-	conn := Conn{sync.Mutex{}, gconn}
-
-	wg := sync.WaitGroup{}
-
-	wg.Add(1)
-	// setup ping/pong to keep connection open
-	go func() {
-		ticker := time.NewTicker(WSPingInterval)
-		defer ticker.Stop()
-		defer wg.Done()
-
-		for {
-			select {
-			case <-ctx.Done():
-				logger.Info("ping, context done")
-				return
-			case <-ticker.C:
-				//slog.Debug("ping")
-				// WriteControl can be called concurrently
-				if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(WSWriteWait)); err != nil {
-					logger.Error("ping client error", "error", err)
-					cancel()
-					return
-				}
-			}
-		}
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer logger.Debug("serveHTTP outCh read loop, done")
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case m, open := <-outCh:
-				if !open {
-					return
-				}
-				err := conn.writeMsg(m)
-				if err != nil {
-					m := util.Msg{Key: "error", Value: err.Error()}
-					conn.writeMsg(m)
-				}
-				if m.Key == ytworker.KeyCompleted {
-					// on completion, also send recent URLs
-					gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
-					recentURLs, err := GetRecentURLs(gruCtx, ws.WebRoot, ws.OutPath, ws.FFProbeCmd)
-					if err != nil {
-						logger.Error("GetRecentURLS error", "error", err)
-						return
-					}
-					m := util.Msg{Key: "recent", Value: recentURLs}
-					conn.writeMsg(m)
-				}
-			}
-		}
-	}()
-
-	// Send recently retrieved URLs
-	gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
-	recentURLs, err := GetRecentURLs(gruCtx, ws.WebRoot, ws.OutPath, ws.FFProbeCmd)
+	decoder := json.NewDecoder(r.Body)
+	var req Request
+	err := decoder.Decode(&req)
 	if err != nil {
-		logger.Error("GetRecentURLS error", "error", err)
+		err = fmt.Errorf("JSON decode error: %w", err)
+		logger.Error("ServeHTTP JSON decode error", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err = w.Write([]byte(err.Error()))
+		if err != nil {
+			logger.Error("ServeHTTP response write error", "error", err)
+		}
 		return
 	}
-	m := util.Msg{Key: "recent", Value: recentURLs}
-	conn.writeMsg(m)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer logger.Debug("ending ws read goroutine")
-		defer conn.Close()
-		for {
-			msgType, raw, err := conn.ReadMessage()
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					logger.Error("ReadMessage error", "error", err)
-				}
-				return
-			}
-
-			logger.Debug("websocket read", "msg", string(raw))
-
-			switch msgType {
-			case websocket.TextMessage:
-				var req Request
-				err = json.Unmarshal(raw, &req)
-				if err != nil {
-					logger.Error("json unmarshal error", "error", err)
-					return
-				}
-
-				err := ws.msgHandler(req)
-				if err != nil {
-					logger.Error("msgHandler error", "error", err)
-					m := util.Msg{Key: "error", Value: err.Error()}
-					conn.writeMsg(m)
-				}
-			default:
-				logger.Error("unknown message type - close websocket\n")
-				return
-			}
+	err = dl.msgHandler(r.Context(), req)
+	if err != nil {
+		logger.Error("msgHandler error", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err = w.Write([]byte(err.Error()))
+		if err != nil {
+			logger.Error("ServeHTTP response write error", "error", err)
 		}
-	}()
+		return
+	}
 
-	logger.Debug("serveHTTP waitgroup wait")
-	wg.Wait()
 	logger.Debug("serveHTTP end")
 }
 
-func (c *Conn) writeMsg(val interface{}) error {
-	c.Lock()
-	defer c.Unlock()
-	j, err := json.Marshal(val)
-	if err != nil {
-		return err
-	}
-	slog.Debug("websocket write", "ws", c.RemoteAddr(), "msg", string(j))
-	if err = c.WriteMessage(websocket.TextMessage, j); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (ws *wsHandler) msgHandler(req Request) error {
+func (dl *dlHandler) msgHandler(ctx context.Context, req Request) error {
 
 	if req.URL == "" && len(req.DeleteURLs) == 0 {
 		return fmt.Errorf("unknown parameters")
 	}
 
 	if len(req.DeleteURLs) > 0 {
-		err := DeleteFiles(req.DeleteURLs, ws.WebRoot)
+		err := DeleteFiles(req.DeleteURLs, dl.WebRoot)
 		if err != nil {
 			return err
 		}
 	} else if req.URL != "" {
-
 		job := &jobs.Job{Payload: req.URL}
-		ws.Dispatcher.Enqueue(job)
+		dl.Dispatcher.Enqueue(job)
 	}
 
 	return nil

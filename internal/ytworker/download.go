@@ -94,9 +94,7 @@ type Misc struct {
 type Download struct {
 	sync.RWMutex
 
-	outCh chan util.Msg
-
-	subscribers map[int64]chan util.Msg
+	OutCh chan util.Msg
 
 	maxProcessTime time.Duration
 
@@ -124,60 +122,15 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 		ytCmd:            ytCmd,
 		ctx:              ctx,
 	}
-	dl.subscribers = make(map[int64]chan util.Msg, 0)
-	dl.outCh = make(chan util.Msg, 10)
+	dl.OutCh = make(chan util.Msg, 10)
 
 	go func() {
-		defer close(dl.outCh)
-
-		for {
-			select {
-			case <-ctx.Done():
-				slog.Info("closing subscribers")
-				dl.RLock()
-				for _, s := range dl.subscribers {
-					close(s)
-				}
-				dl.RUnlock()
-				return
-			case m := <-dl.outCh:
-				dl.RLock()
-				for id, sub := range dl.subscribers {
-					ctx := context.WithValue(ctx, "clientID", id)
-					util.NonblockingChSendCtx(ctx, sub, m)
-				}
-				dl.RUnlock()
-			}
-		}
+		<-ctx.Done()
+		slog.Info("closing output channel")
+		close(dl.OutCh)
 	}()
 
 	return dl
-}
-
-// Subscribe allocates a channel for the caller to receive output from the command.
-// Resources used by the channel are released by [Unsubscribe].
-func (yt *Download) Subscribe() (int64, chan util.Msg) {
-	id := time.Now().UnixMicro()
-	slog.Debug("download subscribe", "id", id)
-
-	outCh := make(chan util.Msg, 10)
-
-	yt.Lock()
-	yt.subscribers[id] = outCh
-	yt.Unlock()
-
-	return id, outCh
-}
-
-// Unsubscribe is used to release the output channel created by [Subscribe].
-func (yt *Download) Unsubscribe(id int64) {
-	slog.Debug("download unsubscribe", "id", id)
-	yt.Lock()
-	if s, ok := yt.subscribers[id]; ok {
-		close(s)
-		delete(yt.subscribers, id)
-	}
-	yt.Unlock()
 }
 
 // Work is called by [jobs.Dispatcher] for each job in the queue.
@@ -185,7 +138,8 @@ func (yt *Download) Work(j *jobs.Job) {
 
 	id := time.Now().UnixMicro()
 
-	ctx, _ := context.WithTimeout(yt.ctx, yt.maxProcessTime)
+	ctx, cancel := context.WithTimeout(yt.ctx, yt.maxProcessTime)
+	defer cancel()
 
 	url, err := url.Parse(j.Payload)
 	if err != nil {
@@ -193,7 +147,11 @@ func (yt *Download) Work(j *jobs.Job) {
 		return
 	}
 
-	yt.download(ctx, id, yt.outCh, url)
+	err = yt.download(ctx, id, yt.OutCh, url)
+	if err != nil {
+		slog.Error("download() error", "error", err)
+		return
+	}
 
 }
 

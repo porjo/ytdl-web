@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"github.com/porjo/ytdl-web/internal/jobs"
+	"github.com/porjo/ytdl-web/internal/util"
 	"github.com/porjo/ytdl-web/internal/ytworker"
+	sse "github.com/tmaxmax/go-sse"
 )
 
 const MaxProcessTime = time.Second * 300
@@ -72,17 +74,108 @@ func main() {
 		dispatcher.Start(ctx)
 	}()
 
-	ws := &wsHandler{
+	s := &sse.Server{
+		OnSession: func(s *sse.Session) (sse.Subscription, bool) {
+
+			logger.Debug("sse session started", "remote_addr", s.Req.RemoteAddr)
+
+			return sse.Subscription{
+				Client:      s,
+				LastEventID: s.LastEventID,
+				Topics:      []string{sse.DefaultTopic},
+			}, true
+		},
+	}
+
+	pingType, err := sse.NewType("ping")
+	if err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
+
+	go func() {
+		defer logger.Debug("downloader outCh read loop, done")
+
+		pingTick := time.NewTicker(5 * time.Second)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-pingTick.C:
+
+				slog.Debug("ping tick")
+
+				sseM := &sse.Message{
+					Type: pingType,
+				}
+				sseM.AppendData("ping")
+				err = s.Publish(sseM)
+				if err != nil {
+					logger.Error("SSE publish error", "error", err)
+					return
+				}
+			case m, open := <-dl.OutCh:
+				if !open {
+					return
+				}
+				sseM := &sse.Message{}
+				j, _ := m.JSON()
+				sseM.AppendData(string(j))
+
+				if m.Key == ytworker.KeyCompleted {
+					// on completion, also send recent URLs
+					gruCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+					defer cancel()
+					recentURLs, err := GetRecentURLs(gruCtx, *webRoot, *outPath, *ffprobeCmd)
+					if err != nil {
+						logger.Error("GetRecentURLS error", "error", err)
+						continue
+					}
+					m := util.Msg{Key: "recent", Value: recentURLs}
+					j, _ = m.JSON()
+					logger.Debug("recent", "json", string(j))
+					sseM.AppendData(string(j))
+				}
+				err = s.Publish(sseM)
+				if err != nil {
+					logger.Error("SSE publish error", "error", err)
+					continue
+				}
+			}
+		}
+	}()
+
+	dlh := &dlHandler{
 		WebRoot:    *webRoot,
 		OutPath:    *outPath,
 		FFProbeCmd: *ffprobeCmd,
 		Dispatcher: dispatcher,
 		Downloader: dl,
 		Logger:     logger,
+		SSE:        s,
 	}
-	http.Handle("/websocket", ws)
 	http.HandleFunc("/dl/stream/", ServeStream(*webRoot))
 	http.Handle("/", http.FileServer(http.Dir(*webRoot)))
+
+	http.Handle("/sse", s)
+	http.Handle("/dl", dlh)
+	http.Handle("/recent", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recentURLs, err := GetRecentURLs(r.Context(), *webRoot, *outPath, *ffprobeCmd)
+		if err != nil {
+			logger.Error("GetRecentURLS error", "error", err)
+			return
+		}
+		m := util.Msg{Key: "recent", Value: recentURLs}
+		j, _ := m.JSON()
+		sseM := &sse.Message{}
+		sseM.AppendData(string(j))
+		err = s.Publish(sseM)
+		if err != nil {
+			logger.Error("SSE publish error", "error", err)
+			return
+		}
+	}))
 
 	slog.Info("starting cleanup routine...")
 	go fileCleanup(filepath.Join(*webRoot, *outPath), *expiry)

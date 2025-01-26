@@ -221,28 +221,6 @@ label {
 	overflow: hidden;
 }
 
-#ws-status-light {
-	/* display: block; */
-	width: 8px;
-	height: 8px;
-	border-radius: 4px;
-	margin: 10px auto;
-}
-
-#ws-status-light.off {
-	background-color: rgb(226,0,0);
-	transform: scale(1);
-}
-
-#ws-status-light.on {
-	background-color: rgb(0, 183, 20);
-	animation-name: pulse;
-	animation-duration: 2s;
-	animation-fill-mode: both;
-	animation-iteration-count: infinite;
-	animation-timing-function: ease;
-}
-
 #recent {
 	display: none;
 	margin: 20px auto;
