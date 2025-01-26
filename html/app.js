@@ -1,13 +1,17 @@
 
+var sseHost = window.location.protocol + "//" + window.location.host;
+
 var player = null;
 var progLast = null;
 var seekTimer = null;
 
 var trackId = null;
 
+var lastPing = new Date();
+
 async function postData (data) {
 	try {
-		const response = await fetch(window.location.protocol + "//" + window.location.host + "/dl", {
+		const response = await fetch(sseHost + "/dl", {
 			method: "POST",
 			body: JSON.stringify(data)
 		});
@@ -21,10 +25,13 @@ async function postData (data) {
 
 $(function(){
 
-	var sseHost = window.location.protocol + "//" + window.location.host;
-
 	const evtSource = new EventSource(sseHost + "/sse");
 
+	// fetch /recent will trigger event to send recent URLs
+	fetch(sseHost + "/recent");
+
+	// it's necessary to close the event source on page unload (e.g. page refresh)
+	// otherwise on next page load the sse conn clashes and we get an error
 	window.onbeforeunload = () => {
 		console.log("closing sse");
 		evtSource.close();
@@ -34,10 +41,25 @@ $(function(){
 		console.error("EventSource failed:", err);
 	};
 
+	evtSource.addEventListener("ping", (event) => {
+		//console.log("ping");
+		lastPing = new Date();
+	});
+
+	setInterval(() => {
+		let diff = new Date() - lastPing;
+		if(diff > 30000) {
+			console.log("ping timeout, reloading page...")
+			location.reload();
+		}
+	},5000)
+
+	/*
 	// this doesn't fire until server sends first message
 	evtSource.onopen = (e) => {
 		console.log("The connection has been established.");
 	};
+	*/
 
 	const url = new URL(window.location);
 	const searchParams = new URLSearchParams(url.search);
@@ -129,8 +151,13 @@ $(function(){
 	}
 
 	evtSource.onmessage = function (e)	{
-		let msg = JSON.parse(e.data);
-		//console.log("sse msg", msg);
+		let messages = e.data.split(/\r?\n/);
+		messages.forEach(msgHandler)
+	}
+
+	function msgHandler(json) {
+		//console.log("msgHandler", json);
+		let msg = JSON.parse(json);
 		if( 'Key' in msg ) {
 			switch (msg.Key) {
 				case 'error':

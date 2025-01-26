@@ -96,7 +96,7 @@ func RunCommandCh(ctx context.Context, command string, flags ...string) (chan st
 		}
 		slog.Debug("command wait, done", "command", command)
 		// kill any orphaned children upon completion, ignore kill error
-		syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	}()
 
 	return outCh, errCh, nil

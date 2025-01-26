@@ -16,7 +16,7 @@ import (
 	"github.com/porjo/ytdl-web/internal/jobs"
 	"github.com/porjo/ytdl-web/internal/util"
 	"github.com/porjo/ytdl-web/internal/ytworker"
-	"github.com/tmaxmax/go-sse"
+	sse "github.com/tmaxmax/go-sse"
 )
 
 const MaxProcessTime = time.Second * 300
@@ -77,7 +77,7 @@ func main() {
 	s := &sse.Server{
 		OnSession: func(s *sse.Session) (sse.Subscription, bool) {
 
-			logger.Debug("session started", "remote_addr", s.Req.RemoteAddr)
+			logger.Debug("sse session started", "remote_addr", s.Req.RemoteAddr)
 
 			return sse.Subscription{
 				Client:      s,
@@ -87,13 +87,34 @@ func main() {
 		},
 	}
 
+	pingType, err := sse.NewType("ping")
+	if err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
+	}
+
 	go func() {
 		defer logger.Debug("downloader outCh read loop, done")
+
+		pingTick := time.NewTicker(5 * time.Second)
 
 		for {
 			select {
 			case <-ctx.Done():
 				return
+			case <-pingTick.C:
+
+				slog.Debug("ping tick")
+
+				sseM := &sse.Message{
+					Type: pingType,
+				}
+				sseM.AppendData("ping")
+				err = s.Publish(sseM)
+				if err != nil {
+					logger.Error("SSE publish error", "error", err)
+					return
+				}
 			case m, open := <-dl.OutCh:
 				if !open {
 					return
@@ -104,18 +125,23 @@ func main() {
 
 				if m.Key == ytworker.KeyCompleted {
 					// on completion, also send recent URLs
-					gruCtx, _ := context.WithTimeout(ctx, 10*time.Second)
+					gruCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+					defer cancel()
 					recentURLs, err := GetRecentURLs(gruCtx, *webRoot, *outPath, *ffprobeCmd)
 					if err != nil {
 						logger.Error("GetRecentURLS error", "error", err)
-						return
+						continue
 					}
 					m := util.Msg{Key: "recent", Value: recentURLs}
 					j, _ = m.JSON()
 					logger.Debug("recent", "json", string(j))
 					sseM.AppendData(string(j))
 				}
-				s.Publish(sseM)
+				err = s.Publish(sseM)
+				if err != nil {
+					logger.Error("SSE publish error", "error", err)
+					continue
+				}
 			}
 		}
 	}()
@@ -134,6 +160,22 @@ func main() {
 
 	http.Handle("/sse", s)
 	http.Handle("/dl", dlh)
+	http.Handle("/recent", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recentURLs, err := GetRecentURLs(r.Context(), *webRoot, *outPath, *ffprobeCmd)
+		if err != nil {
+			logger.Error("GetRecentURLS error", "error", err)
+			return
+		}
+		m := util.Msg{Key: "recent", Value: recentURLs}
+		j, _ := m.JSON()
+		sseM := &sse.Message{}
+		sseM.AppendData(string(j))
+		err = s.Publish(sseM)
+		if err != nil {
+			logger.Error("SSE publish error", "error", err)
+			return
+		}
+	}))
 
 	slog.Info("starting cleanup routine...")
 	go fileCleanup(filepath.Join(*webRoot, *outPath), *expiry)

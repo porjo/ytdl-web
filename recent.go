@@ -33,10 +33,10 @@ func GetRecentURLs(ctx context.Context, webRoot, outPath string, ffProbeCmd stri
 			ff, err := runFFprobe(ctx, ffProbeCmd, filepath.Join(webRoot, outPath, file.Name()))
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
-					slog.Info("ffprobe ran too long and was cancelled, error %s\n", err)
+					slog.Error("ffprobe ran too long and was cancelled", "error", err)
 
 				} else {
-					slog.Info("ffprobe error", "error", err)
+					slog.Error("ffprobe error", "error", err)
 				}
 				continue
 			}
@@ -91,9 +91,9 @@ func fileCleanup(outPath string, expiry time.Duration) {
 		return nil
 	}
 
-	tickChan := time.NewTicker(cleanupInterval).C
+	tickChan := time.NewTicker(cleanupInterval)
 
-	for _ = range tickChan {
+	for range tickChan.C {
 		err := filepath.Walk(outPath, visit)
 		if err != nil {
 			slog.Error("file cleanup error", "error", err)

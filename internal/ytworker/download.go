@@ -138,7 +138,8 @@ func (yt *Download) Work(j *jobs.Job) {
 
 	id := time.Now().UnixMicro()
 
-	ctx, _ := context.WithTimeout(yt.ctx, yt.maxProcessTime)
+	ctx, cancel := context.WithTimeout(yt.ctx, yt.maxProcessTime)
+	defer cancel()
 
 	url, err := url.Parse(j.Payload)
 	if err != nil {
@@ -146,7 +147,11 @@ func (yt *Download) Work(j *jobs.Job) {
 		return
 	}
 
-	yt.download(ctx, id, yt.OutCh, url)
+	err = yt.download(ctx, id, yt.OutCh, url)
+	if err != nil {
+		slog.Error("download() error", "error", err)
+		return
+	}
 
 }
 

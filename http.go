@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,7 +15,7 @@ import (
 
 	"github.com/porjo/ytdl-web/internal/jobs"
 	"github.com/porjo/ytdl-web/internal/ytworker"
-	"github.com/tmaxmax/go-sse"
+	sse "github.com/tmaxmax/go-sse"
 )
 
 const (
@@ -24,9 +25,6 @@ const (
 	// FIXME: need a better way of detecting and timing out slow clients
 	// http response deadline (slow reading clients)
 	HTTPWriteTimeout = 1800 * time.Second
-
-	WSPingInterval = 10 * time.Second
-	WSWriteWait    = 2 * time.Second
 
 	// default content expiry in seconds
 	DefaultExpiry = 24 * time.Hour
@@ -59,38 +57,43 @@ func (dl *dlHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err := decoder.Decode(&req)
 	if err != nil {
 		err = fmt.Errorf("JSON decode error: %w", err)
-		logger.Error("", "error", err)
+		logger.Error("ServeHTTP JSON decode error", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		_, err = w.Write([]byte(err.Error()))
+		if err != nil {
+			logger.Error("ServeHTTP response write error", "error", err)
+		}
 		return
 	}
 
-	err = dl.msgHandler(req)
+	err = dl.msgHandler(r.Context(), req)
 	if err != nil {
 		logger.Error("msgHandler error", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		_, err = w.Write([]byte(err.Error()))
+		if err != nil {
+			logger.Error("ServeHTTP response write error", "error", err)
+		}
 		return
 	}
 
 	logger.Debug("serveHTTP end")
 }
 
-func (ws *dlHandler) msgHandler(req Request) error {
+func (dl *dlHandler) msgHandler(ctx context.Context, req Request) error {
 
 	if req.URL == "" && len(req.DeleteURLs) == 0 {
 		return fmt.Errorf("unknown parameters")
 	}
 
 	if len(req.DeleteURLs) > 0 {
-		err := DeleteFiles(req.DeleteURLs, ws.WebRoot)
+		err := DeleteFiles(req.DeleteURLs, dl.WebRoot)
 		if err != nil {
 			return err
 		}
 	} else if req.URL != "" {
-
 		job := &jobs.Job{Payload: req.URL}
-		ws.Dispatcher.Enqueue(job)
+		dl.Dispatcher.Enqueue(job)
 	}
 
 	return nil
