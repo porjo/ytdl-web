@@ -1,7 +1,7 @@
 
 var sseHost = window.location.protocol + "//" + window.location.host;
 if(window.location.pathname !== "/") {
-	sseHost += "/" + window.location.pathname;
+	sseHost += window.location.pathname;
 }
 
 var player = null;

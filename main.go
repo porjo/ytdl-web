@@ -166,6 +166,7 @@ func main() {
 			logger.Error("GetRecentURLS error", "error", err)
 			return
 		}
+		slog.Debug("getting recent urls", "url_count", len(recentURLs))
 		m := util.Msg{Key: "recent", Value: recentURLs}
 		j, _ := m.JSON()
 		sseM := &sse.Message{}
