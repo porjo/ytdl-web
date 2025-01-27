@@ -4,7 +4,7 @@
 
 Simple web app that takes a Youtube video URL (or any URL supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp)) and produces a downloadable audio file.
 
-![Screenshot](https://porjo.github.io/ytdl-web/screenshot.png)
+![Screenshot](https://github.com/porjo/ytdl-web/blob/master/screenshot.png?raw=true)
 
 ### Features
 
@@ -54,10 +54,6 @@ then:
 ```
 example.com {
 	encode gzip
-	# Origin and Host header values must match
-	reverse_proxy /websocket localhost:8080 {
-		header_up Host {host}
-	}
-	reverse_proxy /* localhost:8080
+	reverse_proxy /* h2c://localhost:8080
 }
 ```
