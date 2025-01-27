@@ -17,6 +17,8 @@ import (
 	"github.com/porjo/ytdl-web/internal/util"
 	"github.com/porjo/ytdl-web/internal/ytworker"
 	sse "github.com/tmaxmax/go-sse"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 const MaxProcessTime = time.Second * 300
@@ -155,12 +157,15 @@ func main() {
 		Logger:     logger,
 		SSE:        s,
 	}
-	http.HandleFunc("/dl/stream/", ServeStream(*webRoot))
-	http.Handle("/", http.FileServer(http.Dir(*webRoot)))
 
-	http.Handle("/sse", s)
-	http.Handle("/dl", dlh)
-	http.Handle("/recent", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/dl/stream/", ServeStream(*webRoot))
+	mux.Handle("/", http.FileServer(http.Dir(*webRoot)))
+
+	mux.Handle("/sse", s)
+	mux.Handle("/dl", dlh)
+	mux.Handle("/recent", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		recentURLs, err := GetRecentURLs(r.Context(), *webRoot, *outPath, *ffprobeCmd)
 		if err != nil {
 			logger.Error("GetRecentURLS error", "error", err)
@@ -183,10 +188,13 @@ func main() {
 
 	slog.Info("listening on port", "port", *port)
 
+	h2s := &http2.Server{}
+
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: HTTPWriteTimeout,
+		Handler:      h2c.NewHandler(mux, h2s),
 	}
 
 	go func() {
