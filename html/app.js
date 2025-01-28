@@ -51,9 +51,10 @@ $(function(){
 
 	setInterval(() => {
 		let diff = new Date() - lastPing;
-		if(diff > 30000) {
-			console.log("ping timeout, reloading page...")
-			location.reload();
+		if(diff > 30000 && window.navigator.onLine) {
+				console.log("ping timeout, reloading page...")
+				location.reload();
+			}
 		}
 	},5000)
 
