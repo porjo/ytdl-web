@@ -7,6 +7,9 @@ var sseHost = window.location.protocol + "//" + window.location.host;
 if(window.location.pathname !== "/") {
 	sseHost += window.location.pathname;
 }
+sseHost = sseHost.replace(/\/$/, "");
+
+console.log("sseHost", sseHost);
 
 var player = null;
 var progLast = null;
@@ -293,8 +296,6 @@ $(function(){
 	$('#output').on('click','.status', function() {
 		$(this).toggleClass("expand");
 	});
-
-
 
 
 	// handle SSE connection/re-connect
