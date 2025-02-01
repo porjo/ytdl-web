@@ -81,6 +81,11 @@ func main() {
 
 			logger.Debug("sse session started", "remote_addr", s.Req.RemoteAddr)
 
+			go func() {
+				<-s.Req.Context().Done()
+				logger.Debug("sse session ended", "remote_addr", s.Req.RemoteAddr)
+			}()
+
 			return sse.Subscription{
 				Client:      s,
 				LastEventID: s.LastEventID,

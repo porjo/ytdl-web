@@ -1,4 +1,8 @@
 
+// SSE vars
+var reconnectFrequencySeconds = 1; // doubles every retry
+var evtSource;
+
 var sseHost = window.location.protocol + "//" + window.location.host;
 if(window.location.pathname !== "/") {
 	sseHost += window.location.pathname;
@@ -10,7 +14,7 @@ var seekTimer = null;
 
 var trackId = null;
 
-var lastPing = new Date();
+//var lastPing = new Date();
 
 async function postData (data) {
 	try {
@@ -28,41 +32,10 @@ async function postData (data) {
 
 $(function(){
 
-	const evtSource = new EventSource(sseHost + "/sse");
+	setupEventSource();
 
 	// fetch /recent will trigger event to send recent URLs
 	fetch(sseHost + "/recent");
-
-	// it's necessary to close the event source on page unload (e.g. page refresh)
-	// otherwise on next page load the sse conn clashes and we get an error
-	window.onbeforeunload = () => {
-		console.log("closing sse");
-		evtSource.close();
-	};
-
-	evtSource.onerror = (err) => {
-		console.error("EventSource failed:", err);
-	};
-
-	evtSource.addEventListener("ping", (event) => {
-		//console.log("ping");
-		lastPing = new Date();
-	});
-
-	setInterval(() => {
-		let diff = new Date() - lastPing;
-		if (diff > 30000 && window.navigator.onLine) {
-			console.log("ping timeout, reloading page...");
-			location.reload();
-		}
-	},5000)
-
-	/*
-	// this doesn't fire until server sends first message
-	evtSource.onopen = (e) => {
-		console.log("The connection has been established.");
-	};
-	*/
 
 	const url = new URL(window.location);
 	const searchParams = new URLSearchParams(url.search);
@@ -151,11 +124,6 @@ $(function(){
 		$job.find('.filesize').text(fileSize);
 
 		return $job
-	}
-
-	evtSource.onmessage = function (e)	{
-		let messages = e.data.split(/\r?\n/);
-		messages.forEach(msgHandler)
 	}
 
 	function msgHandler(json) {
@@ -326,21 +294,93 @@ $(function(){
 		$(this).toggleClass("expand");
 	});
 
-	// cleanup storage
-	for (let i = 0; i < localStorage.length; i++) {
-		let name = localStorage.key(i);
-		if( !name.startsWith("ytdl-")) {
-			continue
-		}
-		let o = JSON.parse(localStorage.getItem(name));
 
-		if(o) {
-			let delta = new Date().getTime() - o.timestamp;
-			// remove if older than 7 days
-			if(delta > 7*86400*1000) {
-				localStorage.removeItem(name);
+
+
+	// handle SSE connection/re-connect
+	// Credit: https://stackoverflow.com/a/54385402/202311
+
+	function isFunction (functionToCheck) {
+		return functionToCheck && {}.toString.call(functionToCheck) === '[object Function]';
+	}
+
+	function debounce (func, wait) {
+		var timeout;
+		var waitFunc;
+
+		return function () {
+			if (isFunction(wait)) {
+				waitFunc = wait;
 			}
+			else {
+				waitFunc = function () { return wait };
+			}
+
+			var context = this, args = arguments;
+			var later = function () {
+				timeout = null;
+				func.apply(context, args);
+			};
+			clearTimeout(timeout);
+			timeout = setTimeout(later, waitFunc());
+		};
+	}
+
+	var reconnectFunc = debounce(function () {
+		setupEventSource();
+		// Double every attempt to avoid overwhelming server
+		reconnectFrequencySeconds *= 2;
+		// Max out at ~1 minute as a compromise between user experience and server load
+		if (reconnectFrequencySeconds >= 64) {
+			reconnectFrequencySeconds = 64;
+		}
+	}, function () {
+		console.log("evtSource reconnecting in " + reconnectFrequencySeconds + " secs")
+		return reconnectFrequencySeconds * 1000;
+	});
+
+	function setupEventSource () {
+		evtSource = new EventSource(sseHost + "/sse");
+
+		evtSource.onopen = function (e) {
+			// Reset reconnect frequency upon successful connection
+			reconnectFrequencySeconds = 1;
+		};
+
+		evtSource.onerror = function (e) {
+			console.log("evtSource error");
+			evtSource.close();
+			reconnectFunc();
+		};
+
+		/*
+		evtSource.addEventListener("ping", (event) => {
+			//console.log("ping");
+			lastPing = new Date();
+		});
+		*/
+
+		evtSource.onmessage = function (e) {
+			let messages = e.data.split(/\r?\n/);
+			messages.forEach(msgHandler)
 		}
 	}
 
 });
+
+// cleanup storage (run once at start)
+for (let i = 0; i < localStorage.length; i++) {
+	let name = localStorage.key(i);
+	if (!name.startsWith("ytdl-")) {
+		continue
+	}
+	let o = JSON.parse(localStorage.getItem(name));
+
+	if (o) {
+		let delta = new Date().getTime() - o.timestamp;
+		// remove if older than 7 days
+		if (delta > 7 * 86400 * 1000) {
+			localStorage.removeItem(name);
+		}
+	}
+}
