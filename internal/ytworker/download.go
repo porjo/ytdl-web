@@ -192,7 +192,8 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- util.Ms
 
 		// Added 2025-01-18 after finding very poor quality audio from the dash settings above.
 		// It seems Youtube has moved from 48kb/s to 32kb/s in their LQ files and it sounds awful!
-		"-f", "bestaudio",
+		// yt-dlp doc: bestaudio*: Select the best quality format that contains audio. It may also contain video.
+		"-f", "bestaudio*",
 	}
 
 	if yt.sponsorBlock {

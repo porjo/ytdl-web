@@ -105,6 +105,8 @@ func main() {
 
 		pingTick := time.NewTicker(5 * time.Second)
 
+		lastInfo := time.Now()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -126,6 +128,15 @@ func main() {
 				if !open {
 					return
 				}
+
+				// ratelimit info updates to prevent flooding client
+				if m.Key == ytworker.KeyInfo {
+					if time.Since(lastInfo) < time.Millisecond*500 {
+						continue
+					}
+					lastInfo = time.Now()
+				}
+
 				sseM := &sse.Message{}
 				j, _ := m.JSON()
 				sseM.AppendData(string(j))
