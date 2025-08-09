@@ -194,6 +194,7 @@ label {
 	position: relative;
 	overflow: hidden;
 	padding: 3px 0px;
+	transition: width 250ms ease-out;
 }
 
 .progress-bar > span:after {
