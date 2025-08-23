@@ -34,6 +34,7 @@ const (
 	KeyCompleted  = "completed"
 	KeyUnknown    = "unknown"
 	KeyInfo       = "info"
+	KeyError      = "error"
 	KeyLinkStream = "link_stream"
 )
 
@@ -150,6 +151,12 @@ func (yt *Download) Work(j *jobs.Job) {
 	err = yt.download(ctx, id, yt.OutCh, url)
 	if err != nil {
 		slog.Error("download() error", "error", err)
+		val := Misc{
+			Id:  id,
+			Msg: err.Error(),
+		}
+		m := util.Msg{Key: KeyError, Value: val}
+		yt.OutCh <- m
 		return
 	}
 
@@ -190,9 +197,7 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- util.Ms
 		// Faster youtube downloads: this combined with -S proto:dash ensures that we get dash https://github.com/yt-dlp/yt-dlp/issues/7417
 		//"--extractor-args", "youtube:formats=duplicate",
 
-		// Added 2025-01-18 after finding very poor quality audio from the dash settings above.
-		// It seems Youtube has moved from 48kb/s to 32kb/s in their LQ files and it sounds awful!
-		// prefer best audio-only format, otherwise fallback to best any format 
+		// prefer best audio-only format, otherwise fallback to best any format
 		"-f", "bestaudio/best",
 	}
 
@@ -220,24 +225,38 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- util.Ms
 		return err
 	}
 
-	infoFileName := ""
-	count := 0
-	for {
+	infoFileName := diskFileNameTmp + ".info.json"
 
-		infoFileName = diskFileNameTmp + ".info.json"
-
-		time.Sleep(500 * time.Millisecond)
-		_, err := os.Stat(infoFileName)
-		if err == nil {
-			break
-		} else if !os.IsNotExist(err) {
-			return err
+	infoCheck := func() error {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		count := 0
+		for {
+			select {
+			case line := <-cmdOutCh:
+				misc := Misc{
+					Id:  id,
+					Msg: line,
+				}
+				m := util.Msg{Key: KeyUnknown, Value: misc}
+				outCh <- m
+			case <-ticker.C:
+				_, err := os.Stat(infoFileName)
+				if err == nil {
+					return nil
+				} else if !os.IsNotExist(err) {
+					return err
+				}
+				if count > 20 {
+					return fmt.Errorf("waited too long for info file")
+				}
+				count++
+			}
 		}
+	}
 
-		if count > 20 {
-			return fmt.Errorf("waited too long for info file")
-		}
-		count++
+	err = infoCheck()
+	if err != nil {
+		return err
 	}
 
 	raw, err := os.ReadFile(infoFileName)

@@ -137,7 +137,8 @@ $(function(){
 				case 'error':
 					$("#output").show();
 					$("#spinner").hide();
-					$("#status").prepend("Error: " + msg.Value + "\n");
+					var $job = updateJob(msg);
+					$job.find('.status').prepend("Error: " + msg.Value.Msg + "\n");
 					break;
 				case 'unknown':
 					$("#output").show();
@@ -153,7 +154,7 @@ $(function(){
 				case 'info':
 					$("#output").show();
 					$("#spinner").hide();
-					var $job = updateJob(msg);
+					updateJob(msg);
 					break;
 				case 'link_stream':
 					if(!isPlaying()) {
