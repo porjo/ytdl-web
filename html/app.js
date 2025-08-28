@@ -80,6 +80,7 @@ $(function(){
 			let param = {delete_urls: urls};
 			postData(param);
 		}
+		$("#controls").hide();
 	});
 
 	function updateJob (msg) {
@@ -173,15 +174,21 @@ $(function(){
 						let title = msg.Value[i].Title;
 						// let description = msg.Value[i].Description;
 						// if(description.length == 0) description = "n/a";
-
 						let $ru = $("<div>", {class: 'recent_url'});
 						let $cont = $("<div>", {class: 'media_meta'});
 						$cont.append($("<span>", {class: 'media_artist', text: artist}));
 						$cont.append($("<span>", { class: 'media_title', text: title }));
 						// let $description = $("<div>", { class: 'media_description', text: description });
 						// $cont.append($description);
-						$cont.click(function() {
+						$ru.click(function() {
 							$(this).closest(".recent_url").toggleClass("selected");
+							if( $(".recent_url.selected").length > 0 ) {
+								$("#controls").show();
+								$("#controls").addClass("fade");
+							} else {
+								$("#controls").removeClass("fade");
+								$("#controls").hide();
+							}
 							// $description.slideToggle().addClass('overflow_scroll');
 						});
 						$ru.append($cont);
@@ -213,7 +220,8 @@ $(function(){
 		}
 	};
 
-	function streamPlayClick() {
+	function streamPlayClick(e) {
+		e.stopPropagation();
 		$("#playa").show();
 		let url = $(this).data("stream_url");
 		let title = $(this).data("title");
