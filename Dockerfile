@@ -15,7 +15,7 @@ FROM alpine
 
 RUN apk update && apk upgrade
 
-RUN apk --update add --no-cache ca-certificates curl python3 ffmpeg
+RUN apk --update add --no-cache ca-certificates curl python3 ffmpeg deno
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
 RUN chmod a+rx /usr/local/bin/yt-dlp
 
