@@ -314,7 +314,7 @@ label {
 	margin-top: 5px;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 640px) {
 	#recent {
 		margin: 0 auto;
 	}
