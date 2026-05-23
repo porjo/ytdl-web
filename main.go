@@ -21,7 +21,9 @@ import (
 	"golang.org/x/net/http2/h2c"
 )
 
-const MaxProcessTime = time.Second * 300
+const (
+	MaxProcessTime = time.Second * 300
+)
 
 func main() {
 
@@ -55,12 +57,6 @@ func main() {
 	slog.Info("set output path", "output_path", outPathFull)
 	slog.Info("set content expiry", "expiry", *expiry)
 
-	// create tmp dir
-	if err := os.MkdirAll(filepath.Join(outPathFull, "t"), os.ModePerm); err != nil {
-		slog.Error(err.Error())
-		os.Exit(1)
-	}
-
 	err := mime.AddExtensionType(".oga", "audio/ogg")
 	if err != nil {
 		slog.Error(err.Error())
@@ -69,7 +65,10 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	dl := ytworker.NewDownload(ctx, *webRoot, *outPath, *sponsorBlock, *sponsorBlockCats, *ytCmd, *maxProcessTime)
+	dl, err := ytworker.NewDownload(ctx, *webRoot, *outPath, *sponsorBlock, *sponsorBlockCats, *ytCmd, *maxProcessTime)
+	if err != nil {
+		slog.Error(err.Error())
+	}
 	dispatcher := jobs.NewDispatcher(dl, 10)
 	go func() {
 		slog.Info("starting job dispatcher")
@@ -77,20 +76,16 @@ func main() {
 	}()
 
 	s := &sse.Server{
-		OnSession: func(s *sse.Session) (sse.Subscription, bool) {
+		OnSession: func(w http.ResponseWriter, r *http.Request) (topics []string, accepted bool) {
+			logger.Debug("sse session started", "remote_addr", r.RemoteAddr)
 
-			logger.Debug("sse session started", "remote_addr", s.Req.RemoteAddr)
-
+			// session ends when request ends
 			go func() {
-				<-s.Req.Context().Done()
-				logger.Debug("sse session ended", "remote_addr", s.Req.RemoteAddr)
+				<-r.Context().Done()
+				logger.Debug("sse session ended", "remote_addr", r.RemoteAddr)
 			}()
 
-			return sse.Subscription{
-				Client:      s,
-				LastEventID: s.LastEventID,
-				Topics:      []string{sse.DefaultTopic},
-			}, true
+			return []string{sse.DefaultTopic}, true
 		},
 	}
 

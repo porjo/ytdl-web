@@ -314,6 +314,7 @@ label {
 	margin-top: 5px;
 }
 
+/* 640px is a breakpoint Shikwasa player uses */
 @media (max-width: 640px) {
 	#recent {
 		margin: 0 auto;

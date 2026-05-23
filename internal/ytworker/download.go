@@ -36,6 +36,9 @@ const (
 	KeyInfo       = "info"
 	KeyError      = "error"
 	KeyLinkStream = "link_stream"
+
+	// temporary directory relative to output directory
+	tmpDir = "t"
 )
 
 var (
@@ -108,7 +111,14 @@ type Download struct {
 	ctx context.Context
 }
 
-func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool, sponsorBlockCats string, ytCmd string, maxProcessTime time.Duration) *Download {
+func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool, sponsorBlockCats string, ytCmd string, maxProcessTime time.Duration) (*Download, error) {
+
+	outPathFull := filepath.Join(webroot, outPath)
+
+	// create tmp dir (and output path if necessary)
+	if err := os.MkdirAll(filepath.Join(outPathFull, tmpDir), os.ModePerm); err != nil {
+		return nil, err
+	}
 
 	if maxProcessTime < time.Second*30 {
 		maxProcessTime = DefaultMaxProcessTime
@@ -131,7 +141,7 @@ func NewDownload(ctx context.Context, webroot, outPath string, sponsorBlock bool
 		close(dl.OutCh)
 	}()
 
-	return dl
+	return dl, nil
 }
 
 // Work is called by [jobs.Dispatcher] for each job in the queue.
