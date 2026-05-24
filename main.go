@@ -17,8 +17,6 @@ import (
 	"github.com/porjo/ytdl-web/internal/util"
 	"github.com/porjo/ytdl-web/internal/ytworker"
 	sse "github.com/tmaxmax/go-sse"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 const (
@@ -199,14 +197,15 @@ func main() {
 
 	slog.Info("listening on port", "port", *port)
 
-	h2s := &http2.Server{}
-
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: HTTPWriteTimeout,
-		Handler:      h2c.NewHandler(mux, h2s),
+		Handler:      mux,
 	}
+	srv.Protocols = new(http.Protocols)
+	srv.Protocols.SetHTTP1(true)
+	srv.Protocols.SetUnencryptedHTTP2(true)
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil {
