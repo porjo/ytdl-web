@@ -14,6 +14,7 @@ console.log("sseHost", sseHost);
 var player = null;
 var progLast = null;
 var seekTimer = null;
+var progressBarTimer = null;
 
 var trackId = null;
 
@@ -213,6 +214,10 @@ $(function(){
 							$media.append($mediaProgress);
 						}
 						$ru.append($media);
+						let $progressBar = $("<div>", {class: 'media_progress_bar'});
+						let $progressFill = $("<div>", {class: 'media_progress_fill'});
+						$progressBar.append($progressFill);
+						$ru.append($progressBar);
 						$("#recent_urls").append($ru);
 					}
 					break;
@@ -244,6 +249,30 @@ $(function(){
 		} else {
 			return {currentTime: 0, duration: 0, percent: 0};
 		}
+	}
+
+	function startProgressBarTimer() {
+		if (progressBarTimer !== null) {
+			clearInterval(progressBarTimer);
+		}
+		progressBarTimer = setInterval(updateProgressBars, 1000);
+	}
+
+	function updateProgressBars() {
+		$(".recent_url .media_progress_fill").each(function() {
+			let $ru = $(this).closest(".recent_url");
+			let title = $ru.find(".media_title").text();
+			let artist = $ru.find(".media_artist").text();
+			let percent = 0;
+
+			if (isPlaying() && trackId === "ytdl-" + title + " - " + artist) {
+				percent = (player.currentTime / player.duration) * 100;
+			} else {
+				percent = getMediaProgress(title, artist).percent;
+			}
+
+			$(this).css("width", Math.min(percent, 100) + "%");
+		});
 	}
 
 	function updatePlayer(url, title, artist, autoplay=false) {
@@ -305,6 +334,8 @@ $(function(){
 	$('#output').on('click','.status', function() {
 		$(this).toggleClass("expand");
 	});
+
+	startProgressBarTimer();
 
 
 	// handle SSE connection/re-connect
