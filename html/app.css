@@ -250,7 +250,6 @@ label {
 
 .recent_url {
 	display: flex;
-	flex-wrap: wrap;
 	justify-content: space-between;
 	padding: 10px;
 	align-items: center;
@@ -313,20 +312,6 @@ label {
 	font-size: 80%;
 	color: #555;
 	margin-top: 5px;
-}
-
-.media_progress_bar {
-	width: 100%;
-	height: 3px;
-	background: #ddd;
-	border-radius: 0;
-	margin-top: 8px;
-}
-
-.media_progress_fill {
-	height: 100%;
-	background-color: #1f8673;
-	transition: width 300ms ease-out;
 }
 
 /* 640px is a breakpoint Shikwasa player uses */
