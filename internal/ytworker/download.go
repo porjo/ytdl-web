@@ -256,7 +256,7 @@ func (yt *Download) download(ctx context.Context, id int64, outCh chan<- util.Ms
 				} else if !os.IsNotExist(err) {
 					return err
 				}
-				if count > 20 {
+				if count > 40 {
 					return fmt.Errorf("waited too long for info file")
 				}
 				count++
