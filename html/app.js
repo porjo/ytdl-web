@@ -14,6 +14,7 @@ console.log("sseHost", sseHost);
 var player = null;
 var progLast = null;
 var seekTimer = null;
+var recentRequested = false;
 
 var trackId = null;
 
@@ -36,9 +37,6 @@ async function postData (data) {
 $(function(){
 
 	setupEventSource();
-
-	// fetch /recent will trigger event to send recent URLs
-	fetch(sseHost + "/recent");
 
 	const url = new URL(window.location);
 	const searchParams = new URLSearchParams(url.search);
@@ -164,6 +162,7 @@ $(function(){
 					}
 					break;
 				case 'recent':
+					recentRequested = true;
 					if( msg.Value.length == 0 ) {
 						break;
 					}
@@ -337,6 +336,11 @@ $(function(){
 	}
 
 	var reconnectFunc = debounce(function () {
+		// a reconnect may already have been started while we were waiting
+		if (evtSource && evtSource.readyState !== EventSource.CLOSED) {
+			console.log("evtSource already reconnecting, skipping");
+			return;
+		}
 		setupEventSource();
 		// Double every attempt to avoid overwhelming server
 		reconnectFrequencySeconds *= 2;
@@ -350,16 +354,42 @@ $(function(){
 	});
 
 	function setupEventSource () {
+		// never leave a previous connection open
+		if (evtSource) {
+			evtSource.close();
+		}
+
 		evtSource = new EventSource(sseHost + "/sse");
 
 		evtSource.onopen = function (e) {
 			// Reset reconnect frequency upon successful connection
 			reconnectFrequencySeconds = 1;
+
+			// Ask for the recent URLs only once the stream is open. The server has no
+			// history, so a /recent published before we subscribe is lost forever.
+			// Doing this only once avoids rebuilding the list on every reconnect.
+			if (!recentRequested) {
+				recentRequested = true;
+				fetch(sseHost + "/recent");
+			}
 		};
 
 		evtSource.onerror = function (e) {
 			console.log("evtSource error");
-			evtSource.close();
+
+			// Only handle the event if it belongs to the current connection. An error
+			// from a connection we have already replaced must not trigger a reconnect.
+			if (e.target !== evtSource) {
+				return;
+			}
+
+			// The browser can be in the middle of its own retry (CONNECTING), which
+			// means the error is not fatal yet. Leave it alone and let it retry;
+			// otherwise we would close it and open a competing connection.
+			if (evtSource.readyState !== EventSource.CLOSED) {
+				return;
+			}
+
 			reconnectFunc();
 		};
 
